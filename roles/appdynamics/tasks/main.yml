@@ -1,0 +1,223 @@
+---
+### INSTALL APPDYNAMICS APPAGENT 
+- block:
+
+  - include_vars: "{{ ansible_home }}/defaults/appdynamics_accounts.yml"
+
+  - name: Manage machineagent homedir
+    file:
+      dest: "{{ appdynamics_machineagent_homedir }}"
+      state: directory
+
+  - name: "Download and extract AppDynamics MachineAgent {{ appdynamics_version }}"
+    unarchive:
+      src: "{{ resources }}/{{ apptype }}/MachineAgent-bundle-{{ appdynamics_version }}.zip"
+      dest: "{{ appdynamics_machineagent_homedir }}"
+      creates: "{{ appdynamics_machineagent_homedir }}/machineagent.jar"
+      remote_src: False
+    when: appdynamics_version[0]|int > 3
+    tags:
+      - install
+      - config
+      
+  - name: "Download and extract AppDynamics MachineAgent {{ appdynamics_version }}"
+    unarchive:
+      src: "{{ resources }}/{{ apptype }}/MachineAgent-{{ appdynamics_version }}.zip"
+      dest: "{{ appdynamics_machineagent_homedir }}"
+      creates: "{{ appdynamics_machineagent_homedir }}/machineagent.jar"
+      remote_src: False
+    when: appdynamics_version[0]|int < 4
+    tags:
+      - install
+      - config
+
+  - name: set symlink
+    file:
+      src: "{{ appdynamics_machineagent_homedir | basename }}"
+      dest: "{{ appdynamics_machineagent_basedir }}"
+      state: link
+    no_log: True
+    
+  - name: Manage bin dir
+    file:
+      path: "{{ appdynamics_machineagent_basedir }}/bin"
+      state: directory
+      mode: '0755'
+
+  - name: Manage start script
+    template: 
+      src: start.sh.j2
+      dest: "{{ appdynamics_machineagent_basedir }}/bin/start.sh" 
+      mode: '0755'
+     
+  - name: Manage stop script
+    template: 
+      src: stop.sh.j2
+      dest: "{{ appdynamics_machineagent_basedir }}/bin/stop.sh" 
+      mode: '0755'
+     
+  - name: Manage machine agent controller-info.xml
+    template:
+      src: machineagent_controller-info.xml.j2
+      dest: "{{ appdynamics_machineagent_basedir }}/conf/controller-info.xml"
+      mode: 0640
+    tags:
+      - install
+      - config
+    no_log: False
+
+  - name: Get machine-agent status
+    shell: "ps -ef|grep {{ appdynamics_machineagent_basedir }}/machineagent.jar|grep -v grep|awk '{ print $2 }'"
+    args:
+      executable: /bin/bash
+    register: machineagent_pid_result
+    changed_when: machineagent_pid_result.rc != 0
+    no_log: True
+    check_mode: no
+    tags:
+      - get_status
+
+  - name: Start MachineAgent
+    set_fact: 
+      machineagent_pid: "{{ machineagent_pid_result.stdout }}"
+    when: appdynamics_machineagent_status == 'running' and machineagent_pid_result.stdout == ""
+    notify: "start machine agent"
+    changed_when: machineagent_pid_result.stdout == ""
+    tags:
+      - start
+    no_log: True
+
+  - name: Stop MachineAgent
+    set_fact: 
+      machineagent_pid: "{{ machineagent_pid_result.stdout }}"
+    when: appdynamics_machineagent_status == 'stopped' and machineagent_pid_result.stdout != ""
+    notify: "stop machine agent"
+    changed_when: machineagent_pid_result.stdout != ""
+    tags:
+      - stop
+    no_log: True
+
+  when: appdynamics_machineagent_ensure == 'present'
+
+- block:
+
+  - name: Manage appagent homedir
+    file:
+      dest: "{{ appdynamics_appagent_homedir }}"
+      state: directory
+
+  - name: Download and extract AppDynamics AppAgent v3
+    unarchive:
+      src: "{{ resources }}/{{ apptype }}/AppServerAgent-{{ appdynamics_version }}.zip"
+      dest: "{{ appdynamics_appagent_homedir }}"
+      creates: "{{ appdynamics_appagent_homedir }}/javaagent.jar"
+      remote_src: False
+    tags:
+      - install
+      - config
+    when: appdynamics_version[0]|int < 4
+    
+  - name: Download and extract AppDynamics AppAgent v4
+    unarchive:
+      src: "{{ resources }}/{{ apptype }}/AppServerAgent-{{ appdynamics_version }}.zip"
+      dest: "{{ appdynamics_appagent_homedir }}"
+      creates: "{{ appdynamics_appagent_homedir }}/ver{{ appdynamics_version }}/javaagent.jar"
+      remote_src: False
+    tags:
+      - install
+      - config
+    when: appdynamics_version[0]|int > 3
+
+  - name: set symlink
+    file:
+      src: "{{ appdynamics_appagent_homedir | basename }}"
+      dest: "{{ appdynamics_appagent_basedir }}"
+      state: link
+    no_log: True
+
+  - name: Manage app agent controller-info.xml
+    template:
+      src: appagent_controller-info.xml.j2
+      dest: "{{ appdynamics_appagent_basedir }}/conf/controller-info.xml"
+      mode: 0640
+    when: appdynamics_version[0]|int < 4
+    tags:
+      - install
+      - config
+    no_log: True
+    
+  - name: Manage app agent controller-info.xml
+    template:
+      src: appagent_controller-info.xml.j2
+      dest: "{{ appdynamics_appagent_basedir }}/ver{{ appdynamics_version }}/conf/controller-info.xml"
+      mode: 0640
+    when: appdynamics_version[0]|int > 3
+    tags:
+      - install
+      - config
+    no_log: True
+
+  when: appdynamics_appagent_ensure == 'present'
+
+### UNINSTALL AppDynamics agents
+
+- block:
+
+  - name: Get machine-agent status
+    shell: "ps -ef|grep {{ appdynamics_machineagent_basedir }}/machineagent.jar|grep -v grep|awk '{ print $2 }'"
+    args:
+      executable: /bin/bash
+    register: machineagent_pid_result
+    changed_when: False
+    no_log: True
+    check_mode: no
+
+  - name: Stop machine-agent
+    shell: kill -9 "{{ machineagent_pid_result.stdout }}"
+    args:
+      executable: /bin/bash
+    no_log: True
+    when: machineagent_pid_result.stdout != ''
+
+  - name: Remove agent link
+    file: 
+      path: "{{ appdynamics_machineagent_basedir }}" 
+      state: absent 
+    no_log: True
+
+  - name: Remove agent directory
+    file: 
+      path: "{{ appdynamics_machineagent_homedir }}" 
+      state: absent 
+    no_log: True
+
+  when: appdynamics_machineagent_ensure == 'absent'
+
+- block:
+
+  - name: Remove agent link
+    file:
+      path: "{{ appdynamics_appagent_basedir }}"
+      state: absent
+    no_log: True
+
+  - name: Remove agent directory
+    file:
+      path: "{{ appdynamics_appagent_homedir }}"
+      state: absent
+    no_log: True
+
+  when: appdynamics_appagent_ensure == 'absent'
+
+- name: Check if Appdynamics top dir is empty
+  shell: "ls -l {{ wxx_dirs.app_dir }}/AppDynamics"
+  register: appdynamics_base_dir_result
+  failed_when: appdynamics_base_dir_result.rc|int not in [0,2]
+  changed_when: False
+
+- name: Remove AppDynamics base dir when empty
+  file:
+    path: "{{ wxx_dirs.app_dir }}/AppDynamics"
+    state: absent
+  when: appdynamics_base_dir_result.stdout == 'total 0'
+

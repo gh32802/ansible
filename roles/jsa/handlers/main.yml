@@ -1,0 +1,34 @@
+---
+- name: restart-jsa-server
+  shell: 
+    "{{ jsa_dir.bin_dir }}/stop.sh;nohup {{ jsa_dir.bin_dir }}/start.sh &"
+  args:
+    chdir: "{{ jsa_dir.bin_dir }}"
+    executable: /bin/bash
+  listen: "restart jsa server"
+  no_log: False
+
+- name: start-jsa-server
+  shell: 
+    "nohup {{ item }}/start.sh &"
+  args:
+    chdir: "{{ item }}"
+    executable: /bin/bash
+  with_items: "{{ jsa_server_start_list | unique }}"
+  listen: "start jsa server"
+  no_log: False
+
+- name: stop-jsa-server
+  shell: 
+    "{{ item }}/stop.sh"
+  args:
+    chdir: "{{ item }}"
+    executable: /bin/bash
+  with_items: "{{ jsa_server_stop_list | unique }}"
+  listen: "stop jsa server"
+  no_log: False
+
+- name: kill-jsa-server
+  command: kill -9 "{{ item }}"
+  with_items: "{{ jsa_server_kill_list | unique }}"
+  listen: "kill jsa server"

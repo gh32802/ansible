@@ -1,0 +1,8 @@
+{% if tomcat_instances is defined %}
+node,appserver_type,appserver_name,appserver_version,java_version,managed_by
+{% for item in tomcat_instances %}
+{% if item.ensure == 'present' %}
+{{ ansible_fqdn }},tomcat,{{ item.name }},{{ item.tomcat_version }},{{ item.java_version }},{{ item.managed_by }}
+{% endif %}
+{% endfor %}
+{% endif %}

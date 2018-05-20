@@ -1,0 +1,60 @@
+---
+- block:
+  - name: Create module path
+    file: 
+      path: "{{ eap_jboss_base_dir }}/{{ eap_module_base_path }}/{{ module.path }}"
+      state: directory
+      mode: '0755'
+    with_items: "{{ eap_modules }}"
+    loop_control:
+      loop_var: module
+    no_log: True
+
+  - name: Install module
+    unarchive:
+      src: "{{ resources }}/{{ apptype }}/modules/{{ module.name }}/{{ module.version }}/{{ module.file }}"
+      dest: "{{ eap_jboss_base_dir }}/{{ eap_module_base_path }}/{{ module.path }}"
+      creates: "{{ eap_jboss_base_dir }}/{{ eap_module_base_path }}/{{ module.path }}/main"
+      remote_src: False
+    register: module_result
+    notify: "restart eap instance"
+    with_items: "{{ eap_modules }}"
+    loop_control:
+      loop_var: module
+    no_log: False
+  when: module.ensure == 'present'
+
+- name: Manage eap_refresh_list for modules 
+  set_fact: eap_refresh_list={{ eap_refresh_list + [ eap_instance_name ] }}
+  when: elem.changed
+  with_items: "{{ module_result.results }}"
+  loop_control:
+    loop_var: elem
+  tags:
+    - install
+    - config
+  no_log: True
+
+- name: Remove module
+  command: rm -rf "{{ module.path }}"
+  args:
+    chdir: "{{ eap_jboss_base_dir }}/{{ eap_module_base_path }}"
+    removes: "{{ module.path }}"
+  register: module_result
+  notify: "restart eap instance"
+  with_items: "{{ eap_modules }}"
+  loop_control:
+    loop_var: module
+  no_log: True
+  when: module.ensure == 'absent'
+
+- name: Manage eap_refresh_list for jdbc driver files
+  set_fact: eap_refresh_list={{ eap_refresh_list + [ eap_instance_name ] }}
+  when: elem.changed
+  with_items: "{{ module_result.results }}"
+  loop_control:
+    loop_var: elem
+  tags:
+    - install
+    - config
+  no_log: True

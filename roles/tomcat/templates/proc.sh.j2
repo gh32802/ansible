@@ -1,0 +1,137 @@
+#!/bin/bash
+
+RUNUSER={{ tomcat_user }}
+ 
+if [ $RUNUSER != $USER ]
+then
+	echo "USER must be \"$RUNUSER\". EXIT!"
+	exit 1
+fi
+ 
+source {{ tomcat_catalina_base }}/bin/setenv.sh
+ 
+ACTION=$1
+USAGE="$(basename $0) start|stop|restart|status"
+PID=""
+HTTP_PORT={{ tomcat_http_port }}
+HOST={{ ansible_fqdn }}
+INSTANCE={{ tomcat_instance_name }}
+MAINT_STOP_DELAY={{ tomcat_maint_stop_delay }}
+{% if ansible_distribution_major_version|int < 6 %}
+TIMEOUT={{ libdir }}/timeout.sh
+{% else %} 
+TIMEOUT=/usr/bin/timeout
+{% endif %}
+typeset -i START_TIMEOUT={{ tomcat_starttimeout }}
+typeset -i STOP_TIMEOUT={{ tomcat_stoptimeout }}
+typeset -i RC=0
+ 
+get_pid() {
+	proc=($(ps -ef|grep servername=$SERVERNAME|grep -v grep))
+	echo "${proc[1]}"
+}
+ 
+get_sdport() {
+        sd=$(grep "Server port=" ${CATALINA_BASE}/conf/server.xml|cut -f2 -d" "|tr -d [a-zA-Z=\"])
+        echo "$sd"
+}
+
+tc_start() {
+        typeset -i rc=0
+        PID=$(get_pid)
+        if [ -z "$PID" ]
+        then
+          req_start=$(date +%s)
+          $CATALINA_HOME/bin/startup.sh
+          RC=$?
+          if (( $RC == 0 ))
+          then
+            echo -e "Start:\t\t\tOK"
+          else
+            echo -e "Start:\t\t\tFAILED"
+          fi
+          return $RC
+        else
+          echo "Instance $SERVERNAME is already running"
+          rc=0
+        fi
+        return $rc
+}
+
+tc_stop() {
+        typeset -i rc=0
+        PID=$(get_pid)
+        if [ -z "$PID" ]
+        then
+        	echo "Instance $SERVERNAME is not running"
+        	rc=0
+        else
+	        SHUTDOWNPORT=$(get_sdport)
+	        echo "Stopping Tomcat:"
+            if [[ -z $SHUTDOWNPORT || $SHUTDOWNPORT == "-1" ]]
+            then
+              kill $PID
+            else
+              $CATALINA_HOME/bin/shutdown.sh
+            fi
+            while [ ! -z "$PID" ]
+            do
+               sleep 1
+               STOP_TIMEOUT=$STOP_TIMEOUT-1
+               if [ $STOP_TIMEOUT -le 0 ]
+               then
+                 kill -9 $PID
+                 echo -e "Stop:\tTIMEOUT reached, Server killed!"
+                 rc=1
+                 break
+               fi
+               PID=$(get_pid)
+            done
+            echo -e "Stop:\t\t\tOK"
+            rc=0
+        fi
+        return $rc
+}
+
+case $ACTION in
+
+        start)
+                tc_start
+                RC=$?
+                if (( $RC == 0 ))
+                then
+                  /wxx/app/scripts/stop_maint.sh $HOST $HTTP_PORT $MAINT_STOP_DELAY $INSTANCE &
+                  disown
+                fi
+                exit $RC
+                ;;
+        stop)
+                /wxx/app/scripts/start_maint.sh $HOST $HTTP_PORT $INSTANCE
+                tc_stop
+                exit 0
+                ;;
+        restart)
+                /wxx/app/scripts/start_maint.sh $HOST $HTTP_PORT $INSTANCE
+                tc_stop && tc_start
+                RC=$?
+                if (( $RC == 0 ))
+                then
+                  /wxx/app/scripts/stop_maint.sh $HOST $HTTP_PORT $MAINT_STOP_DELAY $INSTANCE &
+                fi
+                exit $RC
+                ;;
+        status)
+                PID=$(get_pid)
+                if [ -z "$PID" ]
+                then
+                  echo "Instance $SERVERNAME is not running"
+                  exit 3
+                else
+                  proc_uptime=$(date -d "`ps -p $PID -o lstart=`" +'%d.%m.%Y-%H:%M:%S')
+                  echo "Instance $SERVERNAME is running since $proc_uptime (PID: $PID)"
+                  exit 0
+                fi
+                ;;
+        *)      echo $USAGE
+                ;;
+esac

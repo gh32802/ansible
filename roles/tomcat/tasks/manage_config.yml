@@ -1,0 +1,26 @@
+---
+- name: "Manage conf files for {{ tomcat_instance_name }}"
+  copy: 
+    src: "{{ tomcat_instance_name }}/{{ file.name }}"
+    dest: "{{ tomcat_catalina_base }}/conf/{{ file.name }}" 
+    mode: "{{ file.mode }}"
+  register: file_result
+  notify: "restart tomcat instance"
+  with_items: "{{ tomcat_config_files }}"
+  loop_control:
+    loop_var: file
+  tags:
+    - install
+    - config
+  no_log: True
+
+- name: "Manage tomcat_refresh_list for conf files for {{ tomcat_instance_name }}"
+  set_fact: tomcat_refresh_list={{ tomcat_refresh_list + [ tomcat_instance_name ] }}
+  when: elem.changed and tomcat_instance_status == 'running'
+  with_items: "{{ file_result.results }}" 
+  loop_control:
+    loop_var: elem
+  tags:
+    - install
+    - config
+  no_log: True

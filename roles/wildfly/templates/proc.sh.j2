@@ -1,0 +1,134 @@
+#!/bin/bash
+
+RUNUSER={{ wildfly_user }}
+
+if [ $RUNUSER != $USER ]
+then
+        echo "USER must be \"$RUNUSER\". EXIT!"
+        exit 1
+fi
+
+ACTION=$1
+USAGE="$(basename $0) start|stop|restart|status"
+PID=""
+HOST={{ ansible_fqdn }}
+PORT={{ wildfly_http_port }}
+NODENAME="{{ ansible_hostname }}-{{ wildfly_instance_name }}"
+JBOSSHOMEDIR="{{ wildfly_jboss_home_dir }}"
+JBOSSBASEDIR="{{ wildfly_jboss_base_dir }}"
+JBOSS_CONSOLE_LOG="${JBOSSBASEDIR}/standalone/log/server.log"
+MAINT_STOP_DELAY={{ wildfly_maint_stop_delay }}
+STARTUPMSG="WFLYSRV0025"
+export RUN_CONF="${JBOSSBASEDIR}/bin/standalone.conf"
+export JAVA_HOME={{ wildfly_java_home }}
+typeset -i START_TIMEOUT={{ wildfly_starttimeout }}
+typeset -i STOP_TIMEOUT={{ wildfly_stoptimeout }}
+typeset -i RC=0
+typeset -i running=0
+typeset -i count=0
+
+if [ ! -e $(dirname $JBOSS_CONSOLE_LOG) ]
+then
+  mkdir -p $(dirname $JBOSS_CONSOLE_LOG)
+fi
+
+get_pid() {
+        proc=($(ps -ef|grep Djboss.node.name=$NODENAME|grep -v grep))
+        echo "${proc[1]}"
+}
+
+start() {
+        PID=$(get_pid)
+        if [ -z "$PID" ]
+        then
+          echo -n "Starting instance $NODENAME: "
+          if [ -f $JBOSS_CONSOLE_LOG ]
+          then
+            >$JBOSS_CONSOLE_LOG
+          fi
+          cd $JBOSSBASEDIR/bin
+          $JBOSSBASEDIR/bin/standalone.sh > $JBOSS_CONSOLE_LOG 2>&1 &
+          RC=$?
+          if (( $RC == 0 ))
+          then
+            echo -e "\tOK"
+          else
+            echo -e "\tFAILED"
+          fi
+          return $RC
+        else
+          echo "Instance $NODENAME is already running"
+          return 0
+        fi
+}
+
+stop() {
+        PID=$(get_pid)
+        if [ -z "$PID" ]
+        then
+          echo "Instance $NODENAME is not running"
+          return 0
+        else
+          echo -n "Stopping instance $NODENAME: "
+          PID=$(get_pid)
+          ${JBOSSBASEDIR}/bin/jboss-cli.sh -c shutdown
+          PID=$(get_pid)
+          while [ ! -z "$PID" ]
+          do
+             sleep 1
+             STOP_TIMEOUT=$STOP_TIMEOUT-1
+             if [ $STOP_TIMEOUT -le 0 ]
+             then
+               kill -9 $PID
+               echo -e "\tTIMEOUT reached, Server killed!"
+               break
+             fi
+             PID=$(get_pid)
+          done
+          echo -e "\tOK"
+          return 0
+        fi
+}
+
+case $ACTION in
+
+        start)
+                start
+                RC=$?
+                if (( $RC == 0 ))
+                then
+                  (sleep $MAINT_STOP_DELAY && /wxx/app/scripts/stop_maint.sh $HOST $PORT)&
+                fi
+                exit $RC
+                ;;
+        stop)
+                /wxx/app/scripts/start_maint.sh $HOST $PORT
+                stop
+                RC=$?
+                exit $RC
+                ;;
+        restart)
+                /wxx/app/scripts/start_maint.sh $HOST $PORT
+                stop && start
+                RC=$?
+                if (( $RC == 0 ))
+                then
+                  (sleep $MAINT_STOP_DELAY && /wxx/app/scripts/stop_maint.sh $HOST $PORT)&
+                fi
+                exit $RC
+                ;;
+        status)
+                PID=$(get_pid)
+                if [ -z "$PID" ]
+                then
+                  echo "Instance $NODENAME is not running"
+                  exit 3
+                else
+                  proc_uptime=$(date -d "`ps -p $PID -o lstart=`" +'%d.%m.%Y-%H:%M:%S')
+                  echo "Instance $NODENAME is running since $proc_uptime (PID: $PID)"
+                  exit 0
+                fi
+                ;;
+        *)      echo $USAGE
+                ;;
+esac

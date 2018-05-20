@@ -1,0 +1,1 @@
+jsa_server_status: "{{ jsa_dir.status|default('running') }}"

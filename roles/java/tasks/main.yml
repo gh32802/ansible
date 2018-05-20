@@ -1,0 +1,17 @@
+---
+- name: Set java default architecture to x64
+  set_fact:
+    java_arch: 'x64'
+    java_arch_alias: 'x64'
+ 
+- name: Set java architecture to x32
+  set_fact:
+    java_arch: 'i586'
+    java_arch_alias: 'x32'
+  when: ansible_machine != 'x86_64'
+
+- include_tasks: manage_java_instances.yml
+  with_items: "{{ java_instances }}"
+  loop_control:
+    loop_var: 'java'
+  when: java.is_managed == true

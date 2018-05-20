@@ -1,0 +1,44 @@
+---
+ - hosts: showcase-test-webapp
+   remote_user: webuser
+   gather_facts: False
+
+   vars:
+     ansible_home: "{{ lookup('env','ANSIBLE_HOME') }}"
+
+   vars_files:
+     - "{{ ansible_home }}/defaults/main.yml"
+
+   tasks:
+     - name: Include vars
+       include_vars:
+         dir: 'vars'
+         extensions:
+           - yml
+       run_once: True
+
+     - name: Start tomcat instances
+       shell: "nohup /wxx/app/{{ item.name }}/bin/proc.sh start &"
+       args:
+         chdir: "/wxx/app/{{ item.name }}/bin"
+         executable: /bin/bash
+       with_items: "{{ tomcat_instances }}"
+       no_log: True
+       when: 'tomcat_instances is defined'
+
+     - name: Start jboss-jdg instances
+       shell: "nohup /wxx/app/{{ item.name }}/bin/proc.sh start &"
+       args:
+         chdir: "/wxx/app/{{ item.name }}/bin"
+         executable: /bin/bash
+       with_items: "{{ jdg_instances }}"
+       no_log: True
+       when: 'jdg_instances is defined'
+
+     - name: start_httpd
+       shell: "{{ httpd.serverroot }}/bin/start.sh"
+       args:
+         chdir: "{{ httpd.serverroot }}/bin"
+         executable: /bin/bash
+       no_log: False
+       when: 'httpd.serverroot is defined'

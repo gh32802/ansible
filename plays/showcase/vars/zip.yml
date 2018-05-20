@@ -1,0 +1,7 @@
+zip_dirs:
+  - path: '/wxx/app/cas/'
+    state: directory
+    mode: '0755'
+  - path: '/wxx/app/cas-management/'
+    state: directory
+    mode: '0755'

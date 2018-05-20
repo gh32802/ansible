@@ -1,0 +1,26 @@
+#!/bin/bash
+
+HTTPDCONF="{{ httpd_serverroot }}/conf/httpd.conf"
+HOST={{ ansible_fqdn }}
+MAINT_STOP_DELAY={{ httpd_maint_stop_delay }}
+HTTPD_PORTS="{{ httpd_ports }}"
+INSTANCE=httpd
+PID=($( ps -ef |grep httpd|egrep -v 'grep|webuser|bash|service|systemctl'|grep root))
+
+if [ -z "${PID[1]}" ]
+then
+  sudo /usr/sbin/httpd -f $HTTPDCONF -k start
+  RC=$?
+  if (( $RC == 0 ))
+  then
+    for PORT in $HTTPD_PORTS
+    do
+      /wxx/app/scripts/stop_maint.sh $HOST $PORT $MAINT_STOP_DELAY $INSTANCE &
+    done
+  fi
+else
+  UPTIME=$(date -d "`ps -p ${PID[1]} -o lstart=`" +'%d.%m.%Y-%H:%M:%S')
+  echo "HTTPD is already running since $UPTIME (PID=${PID[1]})"
+fi
+
+exit $?

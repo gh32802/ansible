@@ -1,0 +1,32 @@
+---
+- name: restart-zip-server
+  shell: 
+    "{{ zip_dir.bin_dir }}/stop.sh;nohup {{ zip_dir.bin_dir }}/start.sh &"
+  args:
+    chdir: "{{ zip_dir.bin_dir }}"
+    executable: /bin/bash
+  listen: "restart zip server"
+  no_log: False
+
+- name: start-zip-server
+  shell: 
+    "nohup {{ item }} &"
+  args:
+    executable: /bin/bash
+  with_items: "{{ zip_server_start_list | unique }}"
+  listen: "start zip server"
+  no_log: False
+
+- name: stop-zip-server
+  shell: 
+    "{{ item }}"
+  args:
+    executable: /bin/bash
+  with_items: "{{ zip_server_stop_list | unique }}"
+  listen: "stop zip server"
+  no_log: False
+
+- name: kill-zip-server
+  command: kill -9 "{{ item }}"
+  with_items: "{{ zip_server_kill_list | unique }}"
+  listen: "kill zip server"

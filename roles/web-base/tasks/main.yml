@@ -1,0 +1,61 @@
+---
+- name: Manage wxx directories
+  file: 
+    path: "{{ wxx_dir }}"
+    state: directory
+    mode: '0755'
+  with_items: "{{ wxx_dirs.values() }}"
+  loop_control:
+    loop_var: wxx_dir
+
+- name: Manage wxxpro tools
+  unarchive:
+    src: "{{ resources }}/{{ apptype }}/wxxpro.zip"
+    dest: /usr/local/wxx
+    mode: '0700'
+    remote_src: False
+   
+- name: Manage maintenance scripts
+  copy:
+    src: "{{ resources }}/{{ apptype }}/{{ maint_file }}"
+    dest: "{{ wxx_dirs.app_dir }}/scripts/{{ maint_file }}"
+    mode: '0750'
+    remote_src: False
+  with_items:
+    - 'start_maint.sh'
+    - 'stop_maint.sh'
+  loop_control:
+    loop_var: maint_file
+   
+- name: Manage logfile cleaner config
+  template:
+    src: 'templates/logfilecleaner.conf.j2'
+    dest: '/usr/local/wxx/logfilecleaner.conf'
+    mode: '0600'
+    
+- name: Manage cron job for logfile cleaner
+  cron:  
+    name: "{{ logfilecleaner_cron.name }}"
+    weekday: "{{ logfilecleaner_cron.weekday }}"
+    minute: "{{ logfilecleaner_cron.minute }}"
+    hour: "{{ logfilecleaner_cron.hour }}"
+    user: "{{ logfilecleaner_cron.user }}"
+    job: "{{ logfilecleaner_cron.job }}"
+    state: "{{ logfilecleaner_cron.state }}"
+
+- name: Set java home for webuser
+  blockinfile:
+    path: /home/webuser/.bashrc
+    marker: "#{mark} ANSIBLE MANAGED BLOCK"
+    content: |
+      export JAVA_HOME="{{ wxx_dirs.java_dir }}/latest"
+      export PATH=${JAVA_HOME}/bin:$PATH
+  when: wxx_dirs.java_dir is defined
+
+- name: Install timeout.sh for RHEL5
+  copy: 
+    src: "{{ resources }}/{{ apptype }}/timeout.sh"
+    dest: "{{ libdir }}/timeout.sh" 
+    mode: '0755' 
+  when: ansible_distribution_major_version|int < 6
+

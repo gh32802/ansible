@@ -1,0 +1,218 @@
+---
+### INSTALL JBOSS-EAP instance(s)
+
+- block:
+
+  - name: "Install JDK for {{ eap_instance_name }}"
+    include_role:
+      name: java
+    vars:
+      java_version: "{{ eap_java_version }}"
+      java_set_link: False
+      java_ensure: 'present'
+    when: eap_java_version is defined
+    tags:
+      - install
+      - config
+
+  - name: "Check if JBOSS_HOME_DIR already exists for {{ eap_instance_name }}"
+    stat:
+      path: "{{ eap_jboss_home_dir }}/bin"
+    register: jboss_home_dir_bin
+
+  - name: "Download and extract EAP for {{ eap_instance_name }}"
+    unarchive:
+      src: "{{ resources }}/{{ apptype }}/{{ eap_archive_name }}"
+      dest: "{{ wxx_dirs.app_dir }}"
+      remote_src: False
+    when: jboss_home_dir_bin.stat.isdir is not defined
+    tags:
+      - install
+      - config
+
+  - name: "Move EAP dir name to JBOSS_HOME_DIR for {{ eap_instance_name }}"
+    shell:
+      mv "jboss-eap-{{ eap_version }}" "jboss-eap-{{ eap_version }}-{{ eap_http_port }}"
+    args:
+      chdir: "{{ wxx_dirs.app_dir }}"
+      creates: "{{ eap_jboss_home_dir }}/bin"
+    no_log: True
+
+  - name: "Check if JBOSS_HOME_DIR has been created for {{ eap_instance_name }}"
+    stat:
+      path: "{{ eap_jboss_home_dir }}/bin"
+    register: jboss_home_dir_bin
+
+  - name: "Set symlink for {{ eap_instance_name }}"
+    file:
+      src: "{{ eap_jboss_home_dir | basename }}"
+      dest: "{{ eap_jboss_base_dir }}"
+      state: link
+    no_log: True
+    when: jboss_home_dir_bin.stat.isdir is defined
+
+  - name: "Set cli port for {{ eap_instance_name }}"
+    replace:
+      dest: "{{ eap_jboss_base_dir }}/bin/jboss-cli.xml"
+      regexp: '(^\s+)<port>\d+<\/port>'
+      replace: "\\1<port>{{ eap_cli_port }}</port>"
+    no_log: False
+
+  - block:
+    - set_fact: 
+        eap_appdynamics_system_properties: []
+
+    - name: "Manage AppDynamics configuration for {{ eap_instance_name }}"
+      set_fact: 
+        eap_appdynamics_system_properties={{ eap_appdynamics_system_properties + [ '-Dappdynamics.agent.' + property.key + '=' + property.value ] }}
+      with_dict: "{{ eap_appdynamics_properties }}"
+      loop_control:
+        loop_var: 'property'
+      no_log: True
+    when: eap_appdynamics is defined
+
+  - name: "Manage standalone.conf for {{ eap_instance_name }}"
+    template: 
+      src: standalone.conf.j2 
+      dest: "{{ eap_jboss_base_dir }}/bin/standalone.conf" 
+      mode: 0640
+    register: standalone_conf_result
+    notify: "restart eap instance"
+    tags:
+      - install
+      - config
+    no_log: False
+ 
+  - name: "Set eap_refresh_list for standalone.conf for {{ eap_instance_name }}"
+    set_fact: eap_refresh_list={{ eap_refresh_list + [ eap_instance_name ] }}
+    when: standalone_conf_result.changed and eap_instance_status == 'running'
+    tags:
+      - install
+      - config
+    no_log: True
+
+  - name: "Manage config files for {{ eap_instance_name }}"
+    copy:
+      src="{{ eap_instance_name }}/{{ file.name }}"
+      dest="{{ eap_jboss_base_dir }}/standalone/configuration/{{ file.name }}" mode={{ file.mode }}
+    register: file_result
+    notify: "restart eap instance"
+    with_items: "{{ eap_config_files }}"
+    loop_control:
+      loop_var: file
+    tags:
+      - install
+      - config
+    no_log: True
+
+  - name: "Manage eap_refresh_list for config files for {{ eap_instance_name }}"
+    set_fact: eap_refresh_list={{ eap_refresh_list + [ eap_instance_name ] }}
+    when: elem.changed and eap_instance_status == 'running'
+    with_items: "{{ file_result.results }}"
+    loop_control:
+      loop_var: elem
+    tags:
+      - install
+      - config
+    no_log: True
+
+  - name: "Deploy alive.html for {{ eap_instance_name }}"
+    copy: 
+      src: "{{ resources }}/apps/alive.html" 
+      dest: "{{ eap_jboss_base_dir }}/welcome-content/alive.html" 
+      mode: 0644
+ 
+  - name: "Install proc script for {{ eap_instance_name }}"
+    template: 
+      src: proc.sh.j2 
+      dest: "{{ wxx_dirs.app_dir }}/{{ eap_instance_name }}/bin/proc.sh"
+      mode: 0750
+    tags:
+      - install
+      - config
+ 
+  - include_tasks: manage_svc.yml
+
+  - include_tasks: manage_configuration.yml
+    when: eap_configuration_xml_deploy == True
+
+  - include_tasks: manage_sun_jdk_management_path.yml
+
+  - include_tasks: manage_modules.yml
+    when: eap_modules != []
+
+  - include_tasks: manage_deployments.yml
+    when: eap_apps != []
+
+  - name: "Get eap status for {{ eap_instance_name }}"
+    shell: 
+      "ps -ef|grep {{ ansible_hostname }}-{{ eap_instance_name }}|grep -v grep|awk '{ print $2 }'"
+    register: pid
+    changed_when: pid.rc != 0
+    no_log: True
+    check_mode: no
+
+  - name: "Set eap_start_list for {{ eap_instance_name }}"
+    set_fact: eap_start_list={{ eap_start_list + [ eap_instance_name ] }}
+    when: eap_instance_status == 'running' and pid.stdout == ""
+    notify: "start eap instance"
+    changed_when: pid.stdout == ""
+    tags:
+      - start
+    no_log: True
+
+  - name: "Set eap_stop_list for {{ eap_instance_name }}"
+    set_fact: eap_stop_list={{ eap_stop_list + [ eap_instance_name ] }}
+    when: eap_instance_status == 'stopped' and pid.stdout != ""
+    notify: "stop eap instance"
+    changed_when: pid.stdout != ""
+    tags:
+      - stop
+    no_log: True
+
+  - name: "Manage jboss-eap facts for {{ eap_instance_name }}"
+    template:
+      src: 'templates/jboss-eap.csv.j2'
+      dest: "{{ wxx_dirs.fact_dir }}/jboss-eap.csv"
+      mode: '0644'
+
+  when: eap_instance_ensure == 'present'
+
+### UNINSTALL JBOSS-EAP instance(s)
+- block:
+
+  - include_tasks: manage_svc.yml
+
+  - name: "Get EAP pid for {{ eap_instance_name }}"
+    shell: 
+      "ps -ef|grep {{ ansible_hostname }}-{{ eap_instance_name }}|grep -v grep|awk '{ print $2 }'"
+    register: get_pid
+    changed_when: get_pid.stdout != ""
+    no_log: True
+    check_mode: no
+ 
+  - name : "Stop {{ eap_instance_name }} if running"
+    command: kill -9 {{ get_pid.stdout }}
+    when: get_pid.stdout != ""
+    no_log: True
+ 
+  - name: "Remove instance directory for {{ eap_instance_name }}"
+    file: 
+      path: "{{ eap_jboss_home_dir }}" 
+      state: absent 
+    register: remove_eap_result
+
+  - name: "Remove instance link for {{ eap_instance_name }}"
+    shell: find "{{ wxx_dirs.app_dir }}" -lname  "{{ eap_jboss_home_dir|basename }}" | xargs rm -f
+    args:
+      chdir: "{{ wxx_dirs.app_dir }}"
+    when: remove_eap_result.changed
+
+  - name: "Manage jboss-eap facts for {{ eap_instance_name }}"
+    template: 
+      src: 'templates/jboss-eap.csv.j2'
+      dest: "{{ wxx_dirs.fact_dir }}/jboss-eap.csv"
+      mode: '0644'
+
+  when: eap_instance_ensure == 'absent'
+

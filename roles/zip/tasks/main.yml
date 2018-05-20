@@ -1,0 +1,31 @@
+---
+- name: Initialize zip_server_restart_list
+  set_fact:
+    zip_server_refresh_list: []
+  tags:
+    - init
+
+- name: Initialize zip_server_start_list
+  set_fact:
+    zip_server_start_list: []
+  tags:
+    - init
+
+- name: Initialize zip_server_stop_list
+  set_fact:
+    zip_server_stop_list: []
+  tags:
+    - init
+
+- name: Initialize zip_server_kill_list
+  set_fact:
+    zip_server_kill_list: []
+  tags:
+    - init
+
+- include_tasks: manage_zip.yml
+  with_items:
+    - "{{ zip_dirs }}"
+  loop_control:
+    loop_var: zip_dir
+  when: zip_dir.is_managed == true

@@ -1,0 +1,14 @@
+[Unit]
+Description=JBOSS-EAP Instance {{ eap_instance_name }}
+After=network.target
+
+[Service]
+Type=forking
+WorkingDirectory={{ wxx_dirs.app_dir }}/{{ eap_instance_name }}/bin
+User={{ eap_user }}
+ExecStart=/bin/bash {{ wxx_dirs.app_dir }}/{{ eap_instance_name }}/bin/proc.sh start
+ExecStop=/bin/bash {{ wxx_dirs.app_dir }}/{{ eap_instance_name }}/bin/proc.sh stop
+ExecRestart=/bin/bash {{ wxx_dirs.app_dir }}/{{ eap_instance_name }}/bin/proc.sh restart
+
+[Install]
+WantedBy=multi-user.target

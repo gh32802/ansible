@@ -1,0 +1,8 @@
+/wxx/logs/httpd/*log {
+    missingok
+    notifempty
+    sharedscripts
+    postrotate
+    /usr/sbin/httpd -f /wxx/httpd/conf/httpd.conf -k stop;/usr/sbin/httpd -f /wxx/httpd/conf/httpd.conf -k start 2> /dev/null || true
+    endscript
+}

@@ -1,0 +1,15 @@
+apptype: elasticsearch
+elasticsearch_instances:
+  - name: 'es9200'
+    enable: False
+    ensure: 'present'
+    status: 'running'
+    is_managed: True
+    managed_by: 'webstaff'
+    elasticsearch_version: "{{ elasticsearch_latest }}"
+    java_version: "{{ java_latest }}"
+    network_host: '0.0.0.0'
+    port: '9200'
+    heapsize: '2g'
+    modules: []
+    config_files: []

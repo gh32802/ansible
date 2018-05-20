@@ -1,0 +1,8 @@
+{% if eap_instances is defined %}
+node,appserver_type,appserver_name,appserver_version,java_version,managed_by
+{% for item in eap_instances %}
+{% if item.ensure == 'present' %}
+{{ ansible_fqdn }},jboss-eap,{{ item.name }},{{ item.eap_version }},{{ item.java_version }},{{ item.managed_by }}
+{% endif %}
+{% endfor %}
+{% endif %}

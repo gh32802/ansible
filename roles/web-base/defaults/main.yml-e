@@ -1,0 +1,89 @@
+apptype: helper
+logfilecleaner_conf:
+  - name: '/wxx/app/tomcat*/logs'
+    mtime: '+7'
+  - name: '/wxx/app/eap*/standalone/log'
+    mtime: '+4'
+  - name: '/wxx/app/jdg*/standalone/log'
+    mtime: '+7'
+  - name: '/wxx/app/wildfly*/standalone/log'
+    mtime: '+4'
+  - name: '/wxx/logs/httpd'
+    mtime: '+1'
+logfilecleaner_cron:
+  name: 'Run logfile cleaner cron job'
+  weekday: '*'
+  minute: '0'
+  hour: '0'
+  user: 'webuser'
+  job: '/usr/local/wxx/logfileCleaner.sh'
+  state: 'present'
+user_groups:
+  - name: 'jasgroup'
+    gid: 800800
+    state: present
+users:
+  - name: 'webuser'
+    uid: 800801
+    home: '/home/webuser'
+    groups: 'jasgroup'
+    shell: '/bin/bash'
+    state: present
+  - name: 'jasreader'
+    uid: 800802
+    home: '/home/jasreader'
+    groups: 'jasgroup'
+    shell: '/bin/bash'
+    state: present
+resources: /wxx/repo
+base_dir: /wxx
+wxx_dirs:
+  app_dir: "{{ base_dir }}/app"
+  lib_dir: "{{ base_dir }}/lib"
+  log_dir: "{{ base_dir }}/logs"
+  java_dir: "{{ base_dir }}/java"
+  data_dir: "{{ base_dir }}/data"
+  fact_dir: "{{ base_dir }}/facts.d"
+  sec_dir: "{{ base_dir }}/app/security"
+  script_dir: "{{ base_dir }}/app/scripts"
+eap_user: webuser
+eap_group: jasgroup
+jdg_user: webuser
+jdg_group: jasgroup
+eap_instance_dirs:
+  - bin
+  - bin/config
+  - modules
+  - standalone
+  - standalone/configuration
+  - standalone/configuration/standalone_xml_history
+  - standalone/data
+  - standalone/deployments
+  - standalone/lib
+  - standalone/lib/ext
+  - standalone/log
+  - standalone/tmp
+  - standalone/tmp/auth
+  - welcome-content
+eap_config_files:
+  - application-roles.properties
+  - application-users.properties
+  - mgmt-groups.properties
+  - mgmt-users.properties
+  - standalone.xml
+  - standalone-ha.xml
+  - standalone-full.xml
+  - standalone-full-ha.xml
+elasticsearch_default_config_files:
+  '2':
+    - name: elasticsearch.yml
+      mode: '0640'
+    - name: logging.yml
+      mode: '0640'
+  '5':
+    - name: elasticsearch.yml
+      mode: '0640'
+    - name: log4j2.properties
+      mode: '0640'
+    - name: jvm.options
+      mode: '0640'

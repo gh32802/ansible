@@ -1,0 +1,247 @@
+---
+### INSTALL Tomcat instance(s)
+
+- block:
+
+  - name: "Install JDK {{ tomcat_java_version|default('') }} for {{ tomcat_instance_name }}"
+    include_role:
+      name: java
+    vars:
+      java_version: "{{ tomcat_java_version }}"
+      java_set_link: False
+      java_ensure: 'present'
+    when: tomcat_java_version is defined
+    tags:
+      - install
+      - config
+
+  - name: "Check if CATALINA_HOME already exists for {{ tomcat_instance_name }}"
+    stat:
+      path: "{{ tomcat_catalina_home }}/bin"
+    register: tomcat_catalina_home_bin
+
+  - name: "Check symlink to tomcat installation for {{ tomcat_instance_name }}"
+    file:
+      src: "{{ tomcat_catalina_home | basename }}"
+      dest: "{{ tomcat_catalina_base }}"
+      state: link
+    no_log: True
+    when: tomcat_catalina_home_bin.stat.isdir is defined
+
+  - block:
+
+    - name: "Install Tomcat for {{ tomcat_instance_name }}"
+      unarchive:
+        src: "{{ resources }}/{{ apptype }}/{{ tomcat_archive_name }}"
+        dest: "{{ wxx_dirs.app_dir }}"
+        exclude: "{{ tomcat_excludes }}"
+        remote_src: False
+
+    - name: "Move install dir to CATALINA_HOME for {{ tomcat_instance_name }}"
+      shell:
+        mv "apache-tomcat-{{ tomcat_version }}" "apache-tomcat-{{ tomcat_version }}-{{ tomcat_http_port }}"
+      args:
+        chdir: "{{ wxx_dirs.app_dir }}"
+        creates: "{{ tomcat_catalina_home }}/bin"
+      no_log: True
+
+    - name: "Manage webapps folder for {{ tomcat_instance_name }}"
+      file: 
+        dest: "{{ tomcat_catalina_home }}/webapps"
+        state: directory
+
+    - name: "Set symlink to tomcat installation for {{ tomcat_instance_name }}"
+      file:
+        src: "{{ tomcat_catalina_home | basename }}"
+        dest: "{{ tomcat_catalina_base }}"
+        state: link
+      no_log: True
+
+    - name: "Cleanup server.xml and context.xml for {{ tomcat_instance_name }}"
+      shell: >
+        sed -i -e '/<!--.*-->/d;/<!--/,/-->/d' {server,context}.xml;
+        sed -i -n '/./,/^$/p' {server,context}.xml
+      args:
+        chdir: "{{ tomcat_catalina_base }}/conf"
+        warn: no
+
+    - name: "Set ports in server.xml {{ tomcat_instance_name }}"
+      shell: >
+         sed -i -e 's/8005/{{ 8005|int + tomcat_port_offset|int }}/;
+         s/8080/{{ 8080|int + tomcat_port_offset|int }}/;
+         s/8009/{{ 8009|int + tomcat_port_offset|int }}/;
+         s/8443/{{ 8443|int + tomcat_port_offset|int }}/' "{{ tomcat_catalina_base }}/conf/server.xml"
+      args:
+         warn: no
+      when: tomcat_http_port|int != 8080
+
+    - name: "Add server tag in server.xml for {{ tomcat_instance_name }}"
+      lineinfile:
+        path: "{{ tomcat_catalina_base }}/conf/server.xml"
+        regexp: '(.*)connectionTimeout="(\d+)".*'
+        line: '\1connectionTimeout="\2" server="Apache"'
+        backrefs: yes
+
+    - name: "Add ErrorReportValve in server.xml for {{ tomcat_instance_name }}"
+      lineinfile:
+        path: "{{ tomcat_catalina_base }}/conf/server.xml"
+        insertbefore: '.*<Valve className="org.apache.catalina.valves.AccessLogValve" directory="logs"'
+        line: '        <Valve className="org.apache.catalina.valves.ErrorReportValve" showServerInfo="false" />'
+      when: tomcat_version_major|int > 6 
+
+    - name: "Set JarScanner in context.xml for {{ tomcat_instance_name }}"
+      lineinfile:
+        path: "{{ tomcat_catalina_base }}/conf/context.xml"
+        insertbefore: '</Context>'
+        line: '    <JarScanner scanManifest="false"/>'
+      when: tomcat_version_major|int > 7 
+
+    when: tomcat_catalina_home_bin.stat.isdir is not defined
+
+  - block:
+    - set_fact: 
+        tomcat_appdynamics_system_properties: []
+
+    - name: "Manage AppDynamics configuration for {{ tomcat_instance_name }}"
+      set_fact: 
+        tomcat_appdynamics_system_properties={{ tomcat_appdynamics_system_properties + [ '-Dappdynamics.agent.' + property.key + '=' + property.value ] }}
+      with_dict: "{{ tomcat_appdynamics_properties }}"
+      loop_control:
+        loop_var: 'property'
+      no_log: True
+    when: tomcat_appdynamics is defined
+         
+  - name: "Install setenv script for {{ tomcat_instance_name }}"
+    template: src=setenv.sh.j2 dest={{ tomcat_catalina_base }}/bin/setenv.sh mode=0750
+    register: setenv_result
+    notify: "restart tomcat instance"
+    tags:
+      - install
+      - config
+ 
+  - name: "Set tomcat_refresh_list for setenv for {{ tomcat_instance_name }}"
+    set_fact: tomcat_refresh_list={{ tomcat_refresh_list + [ tomcat_instance_name ] }}
+    when: setenv_result.changed and tomcat_instance_status == 'running'
+    tags:
+      - install
+      - config
+    no_log: True
+
+  - name: "Install proc script for {{ tomcat_instance_name }}"
+    template: src=proc.sh.j2 dest={{ tomcat_catalina_base }}/bin/proc.sh mode=0750
+    tags:
+      - install
+      - config
+ 
+  - include_tasks: manage_svc.yml
+
+  - include_tasks: manage_config.yml
+    when: tomcat_config_files != []
+
+  - include_tasks: manage_modules.yml
+    when: tomcat_modules != []
+
+  - include_tasks: manage_keystores.yml
+    when: tomcat_keystores != []
+
+  - include_tasks: manage_certs.yml
+    when: tomcat_certs != []
+
+  - include_tasks: manage_deployments.yml
+    when: tomcat_apps != []
+
+  - name: "Get config files for {{ tomcat_instance_name }}"
+    find:
+      path: "{{ tomcat_catalina_base }}/conf"
+      file_type: file
+    register: find_result
+
+  - set_fact:
+      config_files_basenames: "{{ find_result.files|map(attribute='path')|map('regex_replace', '.*/conf/(.*)','\\1')|list }}"
+
+  - set_fact:
+      default_config_files: "{{ config_files_basenames|difference(tomcat_config_files|map(attribute='name')|list) }}"
+
+  - name: "Check mode of config files for {{ tomcat_instance_name }}"
+    file:
+      path: "{{ tomcat_catalina_base}}/conf/{{ conf_file }}"
+      state: file
+      mode: '0640'
+    with_items: "{{ default_config_files }}"
+    loop_control:
+      loop_var: conf_file
+    no_log: True
+
+  - name: "Get Tomcat status for {{ tomcat_instance_name }}"
+    shell: "ps -ef|grep {{ ansible_hostname }}-{{ tomcat_instance_name }}|grep -v grep|awk '{ print $2 }'"
+    register: pid
+    changed_when: pid.rc != 0
+    no_log: True
+    check_mode: no
+    tags:
+      - get_status
+
+  - name: "Set tomcat_start_list for {{ tomcat_instance_name }}"
+    set_fact: tomcat_start_list={{ tomcat_start_list + [ tomcat_instance_name ] }}
+    when: tomcat_instance_status == 'running' and pid.stdout == ""
+    notify: "start tomcat instance"
+    changed_when: pid.stdout == ""
+    tags:
+      - start
+    no_log: True
+
+  - name: "Set tomcat_stop_list for {{ tomcat_instance_name }}"
+    set_fact: tomcat_stop_list={{ tomcat_stop_list + [ tomcat_instance_name ] }}
+    when: tomcat_instance_status == 'stopped' and pid.stdout != ""
+    notify: "stop tomcat instance"
+    changed_when: pid.stdout != ""
+    tags:
+      - stop
+    no_log: True
+
+  - name: "Manage tomcat facts for {{ tomcat_instance_name }}"
+    template: 
+      src: 'templates/tomcat.csv.j2'
+      dest: "{{ wxx_dirs.fact_dir }}/tomcat.csv"
+      mode: '0644'
+
+  when: tomcat_instance_ensure == 'present'
+
+### UNINSTALL Tomcat instance(s)
+
+- block:
+
+  - include_tasks: manage_svc.yml
+
+  - name: "Get pid of {{ tomcat_instance_name }}"
+    shell: "ps -ef|grep {{ ansible_hostname }}-{{ tomcat_instance_name }}|grep -v grep|awk '{ print $2 }'"
+    register: get_pid
+    changed_when: get_pid.stdout != ""
+    no_log: True
+    check_mode: no
+ 
+  - name: Stop {{ tomcat_instance_name }} if running"
+    command: kill -9 {{ get_pid.stdout }}
+    when: get_pid.stdout != ""
+    no_log: True
+ 
+  - name: "Remove instance directory for {{ tomcat_instance_name }}"
+    file: 
+      path: "{{ tomcat_catalina_home }}" 
+      state: absent 
+    register: remove_tomcat_result
+    
+  - name: "Remove instance link for {{ tomcat_instance_name }}"
+    shell: find "{{ wxx_dirs.app_dir }}" -lname  "{{ tomcat_catalina_home|basename }}" | xargs rm -f
+    args:
+      chdir: "{{ wxx_dirs.app_dir }}"
+    when: remove_tomcat_result.changed
+
+  - name: "Manage tomcat facts for {{ tomcat_instance_name }}"
+    template: 
+      src: 'templates/tomcat.csv.j2'
+      dest: "{{ wxx_dirs.fact_dir }}/tomcat.csv"
+      mode: '0644'
+
+  when: tomcat_instance_ensure == 'absent'
+

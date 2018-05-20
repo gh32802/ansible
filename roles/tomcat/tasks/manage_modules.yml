@@ -1,0 +1,49 @@
+---
+- name: Install module
+  copy:
+    src: "{{ resources }}/{{ apptype }}/modules/{{ module.name }}/{{ module.version }}/{{ module.file }}"
+    dest: "{{ tomcat_catalina_base }}/lib"
+    remote_src: False
+  register: module_result
+  notify: "restart tomcat instance"
+  with_items: "{{ tomcat_modules }}"
+  loop_control:
+    loop_var: module
+  no_log: False
+  when: module.ensure == 'present'
+
+- name: Manage tomcat_refresh_list for jdbc driver files
+  set_fact: tomcat_refresh_list={{ tomcat_refresh_list + [ tomcat_instance_name ] }}
+  when: elem.changed and tomcat_instance_status == 'running'
+  with_items: "{{ module_result.results }}"
+  loop_control:
+    loop_var: elem
+  tags:
+    - install
+    - config
+  no_log: True
+
+- name: Remove module file
+  file: 
+    src: "{{ resources }}/tomcat/modules/{{ module.name }}/{{ module.version }}/{{ module.file }}"
+    dest: "{{ tomcat_catalina_base }}/lib/{{ module.file }}"
+    state: absent
+  register: module_result
+  notify: "restart tomcat instance"
+  with_items: "{{ tomcat_modules }}"
+  loop_control:
+    loop_var: module
+  no_log: True
+  when: module.ensure == 'absent'
+
+- name: Manage tomcat_refresh_list for conf files
+  set_fact: tomcat_refresh_list={{ tomcat_refresh_list + [ tomcat_instance_name ] }}
+  when: elem.changed
+  with_items: "{{ module_result.results }}"
+  loop_control:
+    loop_var: elem
+  tags:
+    - install
+    - config
+  no_log: True
+

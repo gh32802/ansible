@@ -1,0 +1,21 @@
+#!/bin/bash
+
+appdynamics_machineagent_basedir={{ appdynamics_machineagent_basedir }}
+PID=$(ps -ef|grep "${appdynamics_machineagent_basedir}/machineagent.jar"|grep -v grep|awk '{ print $2 }')
+
+{% if appdynamics_version[0]|int < 4 %}
+if [ -z $PID ]
+then
+  echo "Starting MachineAgent ..."
+  nohup java -jar ${appdynamics_machineagent_basedir}/machineagent.jar &
+else
+  echo "MachineAgent is already running!"
+fi
+{% else %}
+if [ -z $PID ]
+then
+  ${appdynamics_machineagent_basedir}/bin/machine-agent -p ${appdynamics_machineagent_basedir}/tmp/pid -d
+else
+  echo "MachineAgent is already running!"
+fi
+{% endif %}

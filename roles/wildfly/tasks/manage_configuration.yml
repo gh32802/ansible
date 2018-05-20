@@ -1,0 +1,57 @@
+---
+## Deploy main configuration file
+ 
+- name: "Copy {{ wildfly_configuration_xml_name }} for {{ wildfly_instance_name }}"
+  copy: 
+    src: "{{ wildfly_configuration_xml_src }}/{{ wildfly_configuration_xml_name }}"
+    dest: "{{ wxx_dirs.app_dir }}/{{ wildfly_instance_name }}/standalone/configuration/{{ wildfly_configuration_xml_name }}.tpl"
+    remote_src: "{{ wildfly_configuration_xml_remote_src }}"
+  no_log: False
+  changed_when: False
+  register: check_configuration_xml
+
+- name: "Prepare {{ wildfly_configuration_xml_name }} with inserts for {{ wildfly_instance_name }}"
+  blockinfile:
+    dest: "{{ wxx_dirs.app_dir }}/{{ wildfly_instance_name }}/standalone/configuration/{{ wildfly_configuration_xml_name }}.tpl"
+    marker: "<!-- {mark} ANSIBLE MANAGED BLOCK {{ insert.name }} -->"
+    block: "{{ lookup('file', \"files/{{ wildfly_instance_name }}/{{ insert.file }}\") }}"
+    insertafter: "<!--{{ insert.name }}_DESCRIPTION-->"
+  register: configuration_xml_result
+  with_items: "{{ wildfly_configuration_inserts }}"
+  loop_control:
+    loop_var: insert
+  no_log: False
+  changed_when: False
+  when: wildfly_configuration_inserts != []
+
+- name: "Deploy {{ wildfly_configuration_xml_name }} {{ wildfly_instance_name }} check mode"
+  copy:
+    src: "{{ wxx_dirs.app_dir }}/{{ wildfly_instance_name }}/standalone/configuration/{{ wildfly_configuration_xml_name }}.tpl"
+    dest: "{{ wildfly_jboss_base_dir }}/standalone/configuration/{{ wildfly_configuration_xml_name }}"
+    remote_src: True
+  register: check_deploy_result
+  no_log: False
+  check_mode: yes
+
+- name: "Stop WILDFLY instance {{ wildfly_instance_name }}"
+  shell: "{{ wxx_dirs.app_dir }}/{{ wildfly_instance_name }}/bin/proc.sh stop"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ wildfly_instance_name }}/bin"
+    executable: /bin/bash
+  when: check_deploy_result.changed
+
+- name: "Deploy {{ wildfly_configuration_xml_name }} {{ wildfly_instance_name }}"
+  copy:
+    src: "{{ wxx_dirs.app_dir }}/{{ wildfly_instance_name }}/standalone/configuration/{{ wildfly_configuration_xml_name }}.tpl"
+    dest: "{{ wildfly_jboss_base_dir }}/standalone/configuration/{{ wildfly_configuration_xml_name }}"
+    remote_src: True
+  register: deploy_result
+  notify: "restart wildfly instance"
+  no_log: False
+
+- name: "Set wildfly_refresh_list for {{ wildfly_configuration_xml_name }}"
+  set_fact: wildfly_refresh_list={{ wildfly_refresh_list + [ wildfly_instance_name ] }}
+  when: deploy_result.changed
+  tags:
+    - deploy
+  no_log: True

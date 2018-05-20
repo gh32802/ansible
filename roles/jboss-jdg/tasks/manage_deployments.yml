@@ -1,0 +1,58 @@
+---
+## Deploy app
+ 
+- name: "Deploy apps for {{ jdg_instance_name }} check mode"
+  copy:
+    src: "{{ app.src }}/{{ app.file }}"
+    dest: "{{ jdg_jboss_base_dir }}/standalone/deployments/{{ app.file }}"
+    remote_src: "{{ app.remote_src }}"
+  register: deploy_result
+  notify: "restart jdg instance"
+  with_items: "{{ jdg_apps }}"
+  loop_control:
+    loop_var: app
+  no_log: False
+  when: app.ensure == 'present'
+  check_mode: yes
+
+- name: "Stop JDG instance {{ jdg_instance_name }}"
+  shell: "{{ wxx_dirs.app_dir }}/{{ jdg_instance_name }}/bin/proc.sh stop"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ jdg_instance_name }}/bin"
+    executable: /bin/bash
+  when: deploy_result.changed
+
+- name: "Deploy apps for {{ jdg_instance_name }}"
+  copy:
+    src: "{{ app.src }}/{{ app.file }}"
+    dest: "{{ jdg_jboss_base_dir }}/standalone/deployments/{{ app.file }}"
+    remote_src: "{{ app.remote_src }}"
+  register: deploy_result
+  notify: "restart jdg instance"
+  with_items: "{{ jdg_apps }}"
+  loop_control:
+    loop_var: app
+  no_log: False
+  when: app.ensure == 'present'
+
+- name: Manage jdg_refresh_list for deployments
+  set_fact: jdg_refresh_list={{ jdg_refresh_list + [ jdg_instance_name ] }}
+  when: elem.changed and  jdg_instance_status == 'running'
+  with_items: "{{ deploy_result.results }}"
+  loop_control:
+    loop_var: elem
+  tags:
+    - deploy
+  no_log: True
+  
+## Undeploy app
+
+- name: Remove app file
+  file: 
+    dest: "{{ jdg_jboss_base_dir }}/standalone/deployments/{{ app.file }}"
+    state: 'absent'
+  with_items: "{{ jdg_apps }}"
+  register: undeploy_result
+  loop_control:
+    loop_var: app
+  when: app.ensure == 'absent'

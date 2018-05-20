@@ -1,0 +1,26 @@
+---
+### Manage HTTPD balancer
+
+- name: Init balancer member list
+  set_fact:
+    httpd_balancer_member: []
+
+- name: Set balancer member list
+  set_fact:
+    httpd_balancer_member: "{{ groups[httpd_balancer_member_group] }}"
+
+- name: Manage balancer.conf
+  template:
+    dest: "{{ httpd_serverroot }}/conf.d/balancer.conf"
+    src: "templates/balancer.conf.j2" 
+    mode: '0640'
+  no_log: False
+  notify: "reload httpd"
+  when: httpd_balancer_member != []
+
+- name: Remove balancer.conf
+  file: 
+    dest: "{{ httpd_serverroot }}/conf.d/balancer.conf"
+    state: absent
+  notify: "reload httpd"
+  when: httpd_balancer_member == []

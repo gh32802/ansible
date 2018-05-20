@@ -1,0 +1,110 @@
+ServerRoot "{{ httpd_serverroot }}"
+
+Listen 80
+Listen 443
+
+Include conf.d/*.conf
+
+User {{ httpd_user }}
+Group {{ httpd_group }}
+
+ServerAdmin root@localhost
+
+<Directory />
+    AllowOverride none
+    Require all denied
+</Directory>
+
+DocumentRoot "{{ httpd_documentroot }}"
+
+<Directory "{{ httpd_rootdir }}">
+    AllowOverride None
+    Require all granted
+</Directory>
+
+<Directory "{{ httpd_documentroot }}">
+    Options +FollowSymLinks -ExecCGI -IncludesNOEXEC
+    AllowOverride None
+    # Allow open access:
+    Require all granted
+  <LIMIT HEAD GET POST>
+    Require all granted
+  </LIMIT>
+  <LIMITExcept HEAD GET POST>
+    Require all denied
+  </LIMITExcept>
+</Directory>
+
+<IfModule mod_userdir.c>
+     UserDir disable
+</IfModule>
+
+<IfModule dir_module>
+    DirectoryIndex index.html
+</IfModule>
+
+<Files ".ht*">
+    Require all denied
+</Files>
+
+<FilesMatch "\.(old|bak|tar|tgz|gz|inc|cfg|conf)$">
+  Require all denied
+</FilesMatch>
+
+TypesConfig /etc/mime.types
+
+<IfModule mod_mime_magic.c>
+    MIMEMagicFile /etc/httpd/conf/magic
+</IfModule>
+
+HostnameLookups Off
+
+<IfModule dir_module>
+    DirectoryIndex index.html
+</IfModule>
+
+ErrorLog "{{ wxx_dirs.log_dir }}/httpd/error_log"
+
+LogLevel warn
+
+<IfModule log_config_module>
+    LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+    LogFormat "%h %l %u %t \"%r\" %>s %b" common
+
+    <IfModule logio_module>
+      LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\" %I %O" combinedio
+    </IfModule>
+
+    CustomLog "{{ wxx_dirs.log_dir }}/httpd/access_log" combined
+</IfModule>
+
+<IfModule alias_module>
+
+    ScriptAlias /cgi-bin/ "/var/www/cgi-bin/"
+
+</IfModule>
+
+<Directory "/var/www/cgi-bin/" >
+    AllowOverride None
+    Options None
+    Require all granted
+</Directory>
+
+<IfModule mime_module>
+    TypesConfig /etc/mime.types
+
+    AddType application/x-compress .Z
+    AddType application/x-gzip .gz .tgz
+    AddType text/html .shtml
+    AddOutputFilter INCLUDES .shtml
+</IfModule>
+
+AddDefaultCharset UTF-8
+
+<IfModule mime_magic_module>
+    MIMEMagicFile /etc/httpd/conf/magic
+</IfModule>
+
+EnableSendfile on
+TraceEnable    Off
+ExtendedStatus Off

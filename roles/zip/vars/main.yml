@@ -1,0 +1,1 @@
+zip_server_status: "{{ zip_dir.status|default('running') }}"

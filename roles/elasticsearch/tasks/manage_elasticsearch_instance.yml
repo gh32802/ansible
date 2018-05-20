@@ -1,0 +1,203 @@
+---
+### INSTALL ELASTICSEARCH instance(s)
+
+- block:
+
+  - name: Install JDK
+    include_role:
+      name: java
+    vars:
+      java_version: "{{ elasticsearch_java_version }}"
+      java_set_link: False
+      java_ensure: 'present'
+    when: elasticsearch_java_version is defined
+    tags:
+      - install
+      - config
+
+  - name: Check if ES_HOME_DIR already exists
+    stat:
+      path: "{{ elasticsearch_home_dir }}/bin"
+    register: elasticsearch_home_dir_bin
+
+  - name: Download and extract ELASTICSEARCH
+    unarchive:
+      src: "{{ resources }}/{{ apptype }}/{{ elasticsearch_archive_name }}"
+      dest: "{{ wxx_dirs.app_dir }}"
+      remote_src: False
+    when: elasticsearch_home_dir_bin.stat.isdir is not defined
+    tags:
+      - install
+      - config
+
+  - name: Move install dir to ES_HOME
+    shell:
+      mv "elasticsearch-{{ elasticsearch_version }}" "elasticsearch-{{ elasticsearch_version }}-{{ elasticsearch_port }}"
+    args:
+      chdir: "{{ wxx_dirs.app_dir }}"
+      creates: "{{ elasticsearch_home_dir }}/bin"
+    no_log: True
+
+  - name: Check if ES_HOME_DIR has been created
+    stat:
+      path: "{{ elasticsearch_home_dir }}/bin"
+    register: elasticsearch_home_dir_bin
+
+  - name: set symlink
+    file:
+      src: "{{ elasticsearch_home_dir | basename }}"
+      dest: "{{ elasticsearch_base_dir }}"
+      state: link
+    no_log: False
+    when: elasticsearch_home_dir_bin.stat.isdir is defined
+
+  - name: Manage config files
+    copy:
+      src="{{ elasticsearch_instance_name }}/{{ elasticsearch_version_major }}/{{ file.name }}"
+      dest="{{ elasticsearch_base_dir }}/config/{{ file.name }}" mode={{ file.mode }}
+    register: file_result
+    notify: "restart elasticsearch instance"
+    with_items: "{{ elasticsearch_config_files }}"
+    loop_control:
+      loop_var: file
+    tags:
+      - install
+      - config
+    no_log: False
+
+  - name: Manage elasticsearch_refresh_list for config files
+    set_fact: elasticsearch_refresh_list={{ elasticsearch_refresh_list + [ elasticsearch_instance_name ] }}
+    when: elem.changed
+    with_items: "{{ file_result.results }}"
+    loop_control:
+      loop_var: elem
+    tags:
+      - install
+      - config
+    no_log: True
+    
+  - block:
+    - set_fact:
+        elasticsearch_appdynamics_system_properties: []
+
+    - name: "Manage AppDynamics configuration for {{ elasticsearch_instance_name }}"
+      set_fact:
+        elasticsearch_appdynamics_system_properties={{ elasticsearch_appdynamics_system_properties + [ '-Dappdynamics.agent.' + property.key + '=' + property.value ] }}
+      with_dict: "{{ elasticsearch_appdynamics_properties }}"
+      loop_control:
+        loop_var: 'property'
+      no_log: True
+    when: elasticsearch_appdynamics is defined
+    
+  - name: Install setenv script
+    template: 
+      src: "setenv.sh.{{ elasticsearch_version_major }}.j2" 
+      dest: "{{ wxx_dirs.app_dir }}/{{ elasticsearch_instance_name }}/bin/setenv.sh"
+      mode: 0750
+    register: setenv_result
+    notify: "restart elasticsearch instance"
+    tags:
+      - install
+      - config
+ 
+  - name: Set elasticsearch_refresh_list for setenv.sh
+    set_fact: elasticsearch_refresh_list={{ elasticsearch_refresh_list + [ elasticsearch_instance_name ] }}
+    when: setenv_result.changed
+    tags:
+      - install
+      - config
+    no_log: True
+
+  - name: Install proc script
+    template: 
+      src: "proc.sh.{{ elasticsearch_version_major }}.j2" 
+      dest: "{{ wxx_dirs.app_dir }}/{{ elasticsearch_instance_name }}/bin/proc.sh"
+      mode: 0750
+    tags:
+      - install
+      - config
+ 
+  - name: Manage services
+    include_tasks: manage_svc.yml
+
+  - name: Manage modules
+    include_tasks: manage_modules.yml
+    when: elasticsearch_modules != []
+
+  - name: Manage plugins
+    include_tasks: manage_plugins.yml
+    when: elasticsearch_plugins != []
+
+  - name: Get elasticsearch status
+    shell: 
+      "ps -ef|grep {{ ansible_hostname }}-{{ elasticsearch_instance_name }}|grep -v grep|awk '{ print $2 }'"
+    register: pid
+    changed_when: pid.rc != 0
+    no_log: True
+    check_mode: no
+
+  - name: Set elasticsearch_start_list
+    set_fact: elasticsearch_start_list={{ elasticsearch_start_list + [ elasticsearch_instance_name ] }}
+    when: elasticsearch_instance_status == 'running' and pid.stdout == ""
+    notify: "start elasticsearch instance"
+    changed_when: pid.stdout == ""
+    tags:
+      - start
+    no_log: True
+
+  - name: Set elasticsearch_stop_list
+    set_fact: elasticsearch_stop_list={{ elasticsearch_stop_list + [ elasticsearch_instance_name ] }}
+    when: elasticsearch_instance_status == 'stopped' and pid.stdout != ""
+    notify: "stop elasticsearch instance"
+    changed_when: pid.stdout != ""
+    tags:
+      - stop
+    no_log: True
+
+  - name: "Manage elasticsearch facts for {{ elasticsearch_instance_name }}"
+    template:
+      src: 'templates/elasticsearch.csv.j2'
+      dest: "{{ wxx_dirs.fact_dir }}/elasticsearch.csv"
+      mode: '0644'
+
+  when: elasticsearch_instance_ensure == 'present'
+
+### UNINSTALL JBOSS-ELASTICSEARCH instance(s)
+- block:
+
+  - name: Manage services
+    include_tasks: manage_svc.yml
+
+  - name: Get ELASTICSEARCH pid
+    shell: 
+      "ps -ef|grep {{ ansible_hostname }}-{{ elasticsearch_instance_name }}|grep -v grep|awk '{ print $2 }'"
+    register: get_pid
+    changed_when: get_pid.stdout != ""
+    no_log: True
+    check_mode: no
+ 
+  - name : Stop ELASTICSEARCH if running
+    command: kill -9 {{ get_pid.stdout }}
+    when: get_pid.stdout != ""
+    no_log: True
+ 
+  - name: Remove instance directory
+    file: 
+      path: "{{ elasticsearch_home_dir }}" 
+      state: absent 
+    register: remove_elasticsearch_result
+
+  - name: "Remove instance link for {{ elasticsearch_instance_name }}"
+    shell: find "{{ wxx_dirs.app_dir }}" -lname "{{ elasticsearch_home_dir|basename }}" | xargs rm -f
+    args:
+      chdir: "{{ wxx_dirs.app_dir }}"
+    when: remove_elasticsearch_result.changed
+
+  - name: "Manage elasticsearch facts for {{ elasticsearch_instance_name }}"
+    template:
+      src: 'templates/elasticsearch.csv.j2'
+      dest: "{{ wxx_dirs.fact_dir }}/elasticsearch.csv"
+      mode: '0644'
+
+  when: elasticsearch_instance_ensure == 'absent'
+

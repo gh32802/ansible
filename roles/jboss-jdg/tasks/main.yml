@@ -1,0 +1,16 @@
+---
+- name: Initialize refresh_list'
+  set_fact:
+    jdg_refresh_list: []
+
+- name: Initialize start_list
+  set_fact:
+    jdg_start_list: []
+
+- name: Initialize stop_list
+  set_fact:
+    jdg_stop_list: []
+
+- include_tasks: manage_jdg_instance.yml
+  with_items: "{{ jdg_instances }}"
+  when: item.is_managed == true

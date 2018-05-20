@@ -1,0 +1,25 @@
+#
+# Worker  mod_jk connector
+#
+
+LoadModule jk_module /wxx/httpd/lib/mod_jk.so
+
+JkWorkersFile "/wxx/httpd/conf.d/workers.properties"
+JkLogFile "/wxx/logs/httpd/mod_jk.log"
+JkLogLevel error
+JkLogStampFormat "[%a %b %d %H:%M:%S %Y]"
+JkOptions +ForwardKeySize +ForwardURICompatUnparsed -ForwardDirectories
+#JkRequestLogFormat "%w %V %T"
+JkShmFile run/jk.shm
+
+# Add jkstatus for managing runtime data
+<Location /jkstatus>
+  JkMount status
+{% if httpd_minor_version == "2" %}
+  Order allow,deny
+  Allow from all
+{% else %}
+  Require all granted
+{% endif %}
+  Allow from 127.0.0.1
+</Location>

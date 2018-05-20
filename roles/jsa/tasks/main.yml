@@ -1,0 +1,31 @@
+---
+- name: Initialize jsa_server_restart_list
+  set_fact:
+    jsa_server_refresh_list: []
+  tags:
+    - init
+
+- name: Initialize jsa_server_start_list
+  set_fact:
+    jsa_server_start_list: []
+  tags:
+    - init
+
+- name: Initialize jsa_server_stop_list
+  set_fact:
+    jsa_server_stop_list: []
+  tags:
+    - init
+
+- name: Initialize jsa_server_kill_list
+  set_fact:
+    jsa_server_kill_list: []
+  tags:
+    - init
+
+- include_tasks: manage_jsa.yml
+  with_items:
+    - "{{ jsa_dirs }}"
+  loop_control:
+    loop_var: jsa_dir
+  when: jsa_dir.is_managed == true

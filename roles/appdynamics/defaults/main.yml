@@ -1,0 +1,13 @@
+apptype: appdynamics
+appdynamics:
+  version: "{{ appdynamics_latest }}"
+  controller_host: "{{ appdynamics_controller_host }}"
+  controller_port: "{{ appdynamics_controller_port }}"
+  machineagent:
+    ensure: 'present'
+    status: 'running'
+  appagent:
+    ensure: 'present'
+  account: ''
+  application: ''
+  tier: ''

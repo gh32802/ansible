@@ -1,0 +1,430 @@
+---
+### Install HTTPD
+
+- name: Set lib dir to lib64 or lib
+  set_fact:
+    lib: "{{ (ansible_machine == 'x86_64')|ternary('lib64','lib') }}"
+
+- block:
+
+  - name: Install HTTPD
+    command: sudo yum -y install httpd
+    args:
+      warn: no
+      creates: /usr/sbin/httpd
+
+  - name: Update HTTPD
+    command: sudo yum -y update httpd
+    args:
+      warn: no
+    register: httpd_update
+    changed_when: '"no packages marked for update" not in httpd_update.stdout.lower()'
+    when: httpd_ensure == 'latest' 
+
+  - name: Install httpd modules
+    command: sudo yum -y install "{{ module.name }}"
+    args:
+      warn: no
+      creates: "/usr/{{ lib }}/httpd/modules/{{ module.name }}.so" 
+    notify: "restart httpd"
+    with_items: "{{ httpd_modules }}"
+    loop_control:
+      loop_var: module
+    when: module.ensure in ['present', 'latest'] 
+
+  - name: Update httpd modules
+    command: sudo yum -y update "{{ module.name }}"
+    args:
+      warn: no
+    register: httpd_module_update
+    changed_when: '"no packages marked for update" not in httpd_module_update.stdout.lower()'
+    notify: "restart httpd"
+    with_items: "{{ httpd_modules }}"
+    loop_control:
+      loop_var: module
+    when: module.ensure == 'latest'
+
+  - name: Remove httpd modules
+    command: sudo yum -y remove "{{ module.name }}"
+    args:
+      warn: no
+      removes: "/usr/{{ lib }}/httpd/modules/{{ module.name }}.so" 
+    notify: "restart httpd"
+    with_items: "{{ httpd_modules }}"
+    loop_control:
+      loop_var: module
+    when: module.ensure == 'absent'
+
+  - name: Get HTTPD version
+    shell:
+      "/usr/sbin/apachectl -v|head -1|grep -Eow '[0-9.]+'"
+    register: httpd_version_result
+    changed_when: httpd_version_result.rc != 0
+    check_mode: False
+
+  - name: Set HTTPD version
+    set_fact:
+      httpd_version: "{{ httpd_version_result.stdout }}"
+      httpd_major_version: "{{ httpd_version_result.stdout.split('.')[0] }}"
+      httpd_minor_version: "{{ httpd_version_result.stdout.split('.')[1] }}"
+      httpd_patch_version: "{{ httpd_version_result.stdout.split('.')[2] }}"
+    no_log: true
+
+  - name: Manage document root
+    file:
+      path: "{{ wxx_dirs.data_dir }}/httpd/htdocs"
+      state: directory
+      mode: '0755'
+    register: create_conf_web
+
+  - name: Manage log dir
+    file:
+      path: "{{ wxx_dirs.log_dir }}/httpd"
+      state: directory
+      mode: '0755'
+
+  - name: Get file access list for log dir
+    shell: getfacl -dp "{{ wxx_dirs.log_dir }}/httpd"|grep 'user:webuser:rwx'
+    register: get_acl
+    changed_when: False
+    failed_when: False
+    check_mode: False
+
+  - name: Set file access list for log dir
+    command: sudo setfacl -m d:u:webuser:rwx "{{ wxx_dirs.log_dir }}/httpd"
+    args:
+      warn: no
+    when: '"user:webuser:rwx" not in get_acl.stdout'
+
+  - name: Manage web conf dirs
+    file:
+      dest: "{{ httpd_serverroot }}/{{ confdir }}"
+      state: directory
+      mode: '0775'
+    with_items: 
+      - conf
+      - conf.d
+      - lib
+      - bin
+    loop_control:
+      loop_var: confdir
+    no_log: true
+
+  - name: Manage web conf links
+    file:
+      src: "{{ link.src }}"
+      dest: "{{ httpd_serverroot }}/{{ link.dest }}"
+      state: link
+    with_items: 
+      - src: "/usr/{{ lib }}/httpd/modules" 
+        dest: modules
+      - src: "{{ wxx_dirs.log_dir }}/httpd"
+        dest: logs
+      - src: /var/run/httpd
+        dest: run
+    loop_control:
+      loop_var: link 
+    no_log: true
+
+  - name: Manage bin scripts
+    template:
+      dest: "{{ httpd_serverroot }}/bin/{{ item }}"
+      src: "templates/{{ item }}.j2" 
+      mode: '0700'
+    with_items: 
+      - 'start.sh'
+      - 'stop.sh'
+      - 'restart.sh'
+      - 'reload.sh'
+      - 'status.sh'
+    no_log: False
+
+  - name: Manage startup service
+    include_tasks: manage_svc.yml
+
+  - name: Manage mod_jk
+    include_tasks: manage_mod_jk.yml
+    when: httpd_mod_jk_ensure == 'present'
+    
+  - name: Manage httpd.conf
+    template:
+      src: "templates/httpd{{ httpd_version[0:3] }}.conf.j2"
+      dest: "{{ httpd_serverroot }}/conf/httpd.conf"
+    notify: "restart httpd"
+    no_log: False
+
+  - name: Create delault modules conf
+    shell: cat /etc/httpd/conf.modules.d/* > "{{ httpd_serverroot }}/conf.d/modules.conf"
+    args:
+      creates: "{{ httpd_serverroot }}/conf.d/modules.conf"
+    when: httpd_minor_version|int > 4
+
+  - name: Manage files in conf.d
+    copy:
+      src: "files/httpd/{{ httpd_version[0:3] }}/{{ item }}"
+      dest: "{{ httpd_serverroot }}/conf.d/{{ item }}"
+      mode: '0640'
+    with_items: "{{ httpd_conf_web }}"
+    notify: "restart httpd"
+    no_log: False
+
+  - block:
+
+    - name: Create document root for vhost
+      file:
+        dest: "{{ wxx_dirs.data_dir }}/httpd/{{ vhost.servername }}/htdocs"
+        state: directory
+        mode: '0755'
+      with_items: "{{ httpd_vhosts }}"
+      loop_control:
+        loop_var: vhost
+      when: httpd.vhosts != []
+      no_log: True
+
+    - name: Create targets for document links
+      file:
+        dest: "{{ item.1.dest }}"
+        state: directory
+        mode: '0755'
+      with_subelements:
+         - "{{ httpd.vhosts }}"
+         - document_links
+         - skip_missing: true
+      when: httpd_vhosts != []
+      no_log: True
+
+    - name: Create document links
+      file:
+        src: "{{ item.1.dest }}" 
+        dest: "{{ wxx_dirs.data_dir }}/httpd/{{ item.0.servername }}/htdocs/{{ item.1.name }}"
+        state: link
+      with_subelements:
+         - "{{ httpd.vhosts }}"
+         - document_links
+         - skip_missing: true
+      when: httpd_vhosts != []
+      no_log: True 
+
+    - name: Create document root for ssl vhost 
+      file:
+        dest: "{{ wxx_dirs.data_dir }}/httpd/{{ vhost_ssl.servername }}/htdocs"
+        state: directory
+        mode: '0755'
+      with_items: "{{ httpd_vhosts_ssl }}"
+      loop_control:
+        loop_var: vhost_ssl
+      when: httpd_vhosts_ssl != []
+      no_log: True
+
+    - name: Create log dir for vhost
+      file:
+        dest: "{{ wxx_dirs.log_dir }}/httpd/{{ vhost.servername }}"
+        state: directory
+        mode: '0755'
+      with_items: "{{ httpd_vhosts }}"
+      loop_control:
+        loop_var: vhost
+      when: httpd_vhosts != []
+      no_log: True
+
+    - name: Create log dir for vhost ssl
+      file:
+        dest: "{{ wxx_dirs.log_dir }}/httpd/{{ vhost_ssl.servername }}"
+        state: directory
+        mode: '0755'
+      with_items: "{{ httpd_vhosts_ssl }}"
+      loop_control:
+        loop_var: vhost_ssl
+      when: httpd_vhosts_ssl != []
+      no_log: True
+
+    - name: Create vhosts
+      template:
+        src: templates/vhost.conf.j2
+        dest: "{{ httpd_serverroot }}/conf.d/{{ vhost.servername }}.conf"
+      notify: "restart httpd"
+      with_items: "{{ httpd_vhosts }}"
+      loop_control:
+        loop_var: vhost
+      when: vhost.ensure == 'present'
+      no_log: True
+
+    - name: Remove vhosts
+      file:
+        dest: "{{ httpd_serverroot }}/conf.d/{{ vhost.servername }}.conf"
+        state: absent
+      notify: "restart httpd"
+      with_items: "{{ httpd_vhosts }}"
+      loop_control:
+        loop_var: vhost
+      when: vhost.ensure == 'absent'
+      no_log: True
+
+    - name: Create vhosts_ssl
+      template:
+        src: templates/vhost_ssl.conf.j2
+        dest: "{{ httpd_serverroot }}/conf.d/{{ vhost_ssl.servername }}_ssl.conf"
+      notify: "restart httpd"
+      with_items: "{{ httpd_vhosts_ssl }}"
+      loop_control:
+        loop_var: vhost_ssl
+      when: vhost_ssl.ensure == 'present'
+      no_log: True
+
+    - name: Remove vhosts_ssl
+      file:
+        dest: "{{ httpd_serverroot }}/conf.d/{{ vhost_ssl.servername }}_ssl.conf"
+        state: absent
+      notify: "restart httpd"
+      with_items: "{{ httpd_vhosts_ssl }}"
+      loop_control:
+        loop_var: vhost_ssl
+      when: vhost_ssl.ensure == 'absent'
+      no_log: True
+
+    - name: Create cert dir for vhost
+      file:
+        dest: "{{ wxx_dirs.sec_dir }}/{{ vhost_ssl.servername }}"
+        state: directory
+      with_items: "{{ httpd_vhosts_ssl }}"
+      loop_control:
+        loop_var: vhost_ssl
+      when: httpd_vhosts_ssl != [] and vhost_ssl.ensure == 'present'
+      no_log: True
+
+    - name: Deploy SSL cert
+      copy:
+        src: "{{ resources }}/certs/{{ vhost_ssl.servername }}/{{ vhost_ssl.certificate_file }}"
+        dest: "{{ wxx_dirs.sec_dir }}/{{ vhost_ssl.servername }}/{{ vhost_ssl.certificate_file }}"
+        mode: '0644'
+      notify: "restart httpd"
+      with_items: "{{ httpd_vhosts_ssl }}"
+      loop_control:
+        loop_var: vhost_ssl
+      when: httpd_vhosts_ssl != [] and vhost_ssl.ensure == 'present'
+      no_log: True
+
+    - name: Deploy SSL key
+      copy:
+        src: "{{ resources }}/certs/{{ vhost_ssl.servername }}/{{ vhost_ssl.certificate_key_file }}"
+        dest: "{{ wxx_dirs.sec_dir }}/{{ vhost_ssl.servername }}/{{ vhost_ssl.certificate_key_file }}"
+        mode: '0600'
+      notify: "restart httpd"
+      with_items: "{{ httpd_vhosts_ssl }}"
+      loop_control:
+        loop_var: vhost_ssl
+      when: httpd_vhosts_ssl != [] and vhost_ssl.ensure == 'present'
+      no_log: True
+
+    - name: Deploy CA chain file
+      copy:
+        src: "{{ resources }}/certs/chain/{{ vhost_ssl.certificate_chain_file }}"
+        dest: "{{ wxx_dirs.sec_dir }}/{{ vhost_ssl.certificate_chain_file }}"
+        mode: '0644'
+      notify: "restart httpd"
+      with_items: "{{ httpd_vhosts_ssl }}"
+      loop_control:
+        loop_var: vhost_ssl
+      when: httpd_vhosts_ssl != [] and vhost_ssl.ensure == 'present'
+      no_log: True
+
+    - name: Remove vhosts
+      file:
+        dest: "{{ httpd_serverroot }}/conf.d/{{ vhost.servername }}.conf"
+        state: absent
+      notify: "restart httpd"
+      with_items: "{{ httpd_vhosts }}"
+      loop_control:
+        loop_var: vhost
+      when: vhost.ensure == 'absent'
+      no_log: True
+
+    when: httpd_vhosts != []
+
+  - name: Get HTTPD status
+    shell: /bin/ps -ef|grep httpd|grep -v grep > /dev/null && echo "running"
+    register: get_httpd_state
+    changed_when: False
+    failed_when: False
+    check_mode: False
+
+  - name: Start httpd
+    set_fact:
+      do_httpd_start: "{{ (get_httpd_state.stdout != 'running')|ternary(True,False) }}"
+    notify: "start httpd"
+    changed_when: 
+      - get_httpd_state.stdout != 'running'
+      - httpd_state == 'running'
+
+  - name: Stop httpd
+    set_fact:
+      do_httpd_stop: "{{ (get_httpd_state.stdout == 'running')|ternary(True,False) }}"
+    notify: "stop httpd"
+    changed_when: 
+      - get_httpd_state.stdout == 'running'
+      - httpd_state == 'stopped'
+
+  - name: "Manage httpd facts"
+    template: 
+      src: 'templates/httpd.csv.j2'
+      dest: "{{ wxx_dirs.fact_dir }}/httpd.csv"
+      mode: '0644'
+
+  when: httpd_ensure != 'absent'
+
+### Uninstall HTTPD
+
+- block:
+
+  - name: Check if httpd binary exists
+    stat:
+      path: /usr/sbin/httpd
+    register: httpd_bin
+
+  - name: Get HTTPD status
+    shell: /bin/ps -ef|grep httpd|grep -v grep > /dev/null && echo "running"
+    register: get_httpd_state
+    changed_when: False
+    failed_when: False
+
+  - name: Stop httpd
+    command: "{{ httpd_serverroot }}/bin/stop.sh"
+    args:
+      warn: no
+    when: 
+      - httpd_bin.stat.executable is defined
+      - get_httpd_state.stdout == "running"
+
+  - name: Remove web conf links
+    file:
+      src: "{{ link.src }}"
+      dest: "{{ httpd_serverroot }}/{{ link.dest }}"
+      state: absent
+    with_items:
+      - src: "/usr/{{ lib }}/httpd/modules"
+        dest: modules
+      - src: "{{ wxx_dirs.log_dir }}/httpd"
+        dest: logs
+      - src: /var/run/httpd
+        dest: run
+    loop_control:
+      loop_var: link
+    no_log: true
+
+  - name: Remove server root
+    file: 
+      path: "{{ httpd_serverroot }}"
+      state: absent
+
+  - name: Remove HTTPD
+    command: sudo yum -y remove httpd
+    args:
+      warn: no
+    when: httpd_bin.stat.executable is defined
+
+  - name: "Remove httpd facts"
+    file: 
+      path: "{{ wxx_dirs.fact_dir }}/httpd.csv"
+      state: absent
+
+  when: httpd_ensure == 'absent'

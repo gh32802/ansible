@@ -1,0 +1,214 @@
+---
+### INSTALL JBOSS-JDG instance(s)
+
+- block:
+
+  - name: Install JDK
+    include_role:
+      name: java
+    vars:
+      java_version: "{{ jdg_java_version }}"
+      java_set_link: False
+      java_ensure: 'present'
+    when: jdg_java_version is defined
+    tags:
+      - install
+      - config
+
+  - name: "Check if JBOSS_HOME_DIR already exists for {{ jdg_instance_name }}"
+    stat:
+      path: "{{ jdg_jboss_home_dir }}/bin"
+    register: jboss_home_dir_bin
+
+  - name: Download and extract JDG
+    unarchive:
+      src: "{{ resources }}/{{ apptype }}/{{ jdg_archive_name }}"
+      dest: "{{ wxx_dirs.app_dir }}"
+      remote_src: False
+    when: jboss_home_dir_bin.stat.isdir is not defined
+    tags:
+      - install
+      - config
+
+  - name: Move JDG dir name to JBOSS_HOME_DIR
+    shell:
+      mv "jboss-datagrid-{{ jdg_version }}-server" "jboss-datagrid-{{ jdg_version }}-server-{{ jdg_http_port }}"
+    args:
+      chdir: "{{ wxx_dirs.app_dir }}"
+      creates: "{{ jdg_jboss_home_dir }}/bin"
+    no_log: True
+
+  - name: "Check if JBOSS_HOME_DIR has been created for {{ jdg_instance_name }}"
+    stat:
+      path: "{{ jdg_jboss_home_dir }}/bin"
+    register: jboss_home_dir_bin
+
+  - name: set symlink
+    file:
+      src: "{{ jdg_jboss_home_dir | basename }}"
+      dest: "{{ jdg_jboss_base_dir }}"
+      state: link
+    no_log: True
+    when: jboss_home_dir_bin.stat.isdir is defined
+
+  - name: Set name of cli config file
+    set_fact:
+      cli_xml: "{{ (jdg_version_major|int > 6)|ternary('jboss-cli.xml','cli.xml') }}"
+
+  - name: Set cli port
+    replace:
+      dest: "{{ jdg_jboss_base_dir }}/bin/{{ cli_xml }}"
+      regexp: '(^\s+)<port>\d+<\/port>'
+      replace: "\\1<port>{{ jdg_cli_port }}</port>"
+    no_log: False
+
+  - block:
+    - set_fact: 
+        jdg_appdynamics_system_properties: []
+
+    - name: "Manage AppDynamics configuration for {{ jdg_instance_name }}"
+      set_fact: 
+        jdg_appdynamics_system_properties={{ jdg_appdynamics_system_properties + [ '-Dappdynamics.agent.' + property.key + '=' + property.value ] }}
+      with_dict: "{{ jdg_appdynamics_properties }}"
+      loop_control:
+        loop_var: 'property'
+      no_log: True
+    when: jdg_appdynamics is defined
+
+  - name: Manage standalone.conf
+    template: 
+      src: standalone.conf.j2 
+      dest: "{{ jdg_jboss_base_dir }}/bin/standalone.conf" 
+      mode: 0750
+    register: standalone_conf_result
+    notify: "restart jdg instance"
+    tags:
+      - install
+      - config
+    no_log: True
+ 
+  - name: Set jdg_refresh_list for standalone.conf
+    set_fact: jdg_refresh_list={{ jdg_refresh_list + [ jdg_instance_name ] }}
+    when: standalone_conf_result.changed
+    tags:
+      - install
+      - config
+    no_log: True
+
+  - name: Manage config files
+    copy:
+      src="{{ jdginstance_name }}/{{ file.name }}"
+      dest="{{ jdg_jboss_base_dir }}/standalone/configuration/{{ file.name }}" mode={{ file.mode }}
+    register: file_result
+    notify: "restart jdg instance"
+    with_items: "{{ jdg_config_files }}"
+    loop_control:
+      loop_var: file
+    tags:
+      - install
+      - config
+    no_log: True
+
+  - name: Manage jdg_refresh_list for config files
+    set_fact: jdg_refresh_list={{ jdg_refresh_list + [ jdg_instance_name ] }}
+    when: elem.changed and jdg_instance_status == 'running'
+    with_items: "{{ file_result.results }}"
+    loop_control:
+      loop_var: elem
+    tags:
+      - install
+      - config
+    no_log: True
+
+  - name: Install proc script
+    template: 
+      src: proc.sh.j2 
+      dest: "{{ wxx_dirs.app_dir }}/{{ jdg_instance_name }}/bin/proc.sh"
+      mode: 0750
+    tags:
+      - install
+      - config
+ 
+  - include_tasks: manage_svc.yml
+
+  - include_tasks: manage_configuration.yml
+    when: jdg_configuration_xml_deploy == True
+
+  - include_tasks: manage_modules.yml
+    when: modules != []
+
+  - include_tasks: manage_deployments.yml
+    when: jdg_apps != []
+
+  - name: Get jdg status
+    shell: 
+      "ps -ef|grep {{ ansible_hostname }}-{{ jdg_instance_name }}|grep -v grep|awk '{ print $2 }'"
+    register: pid
+    changed_when: pid.rc != 0
+    no_log: True
+    check_mode: no
+
+  - name: Set jdg_start_list
+    set_fact: jdg_start_list={{ jdg_start_list + [ jdg_instance_name ] }}
+    when: jdg_instance_status == 'running' and pid.stdout == ""
+    notify: "start jdg instance"
+    changed_when: pid.stdout == ""
+    tags:
+      - start
+    no_log: True
+
+  - name: Set stop_list
+    set_fact: stop_list={{ stop_list + [ jdg_instance_name ] }}
+    when: jdg_instance_status == 'stopped' and pid.stdout != ""
+    notify: "stop jdg instance"
+    changed_when: pid.stdout != ""
+    tags:
+      - stop
+    no_log: True
+
+  - name: Manage jboss-jgd facts
+    template:
+      src: 'templates/jboss-jdg.csv.j2'
+      dest: "{{ wxx_dirs.fact_dir }}/jboss-jdg.csv"
+      mode: '0644'
+
+  when: jdg_instance_ensure == 'present'
+
+### UNINSTALL JBOSS-JDG instance(s)
+- block:
+
+  - include_tasks: manage_svc.yml
+
+  - name: Get JDG pid
+    shell: 
+      "ps -ef|grep {{ ansible_hostname }}-{{ jdg_instance_name }}|grep -v grep|awk '{ print $2 }'"
+    register: get_pid
+    changed_when: get_pid.stdout != ""
+    no_log: True
+    check_mode: no
+ 
+  - name : Stop JDG if running
+    command: kill -9 {{ get_pid.stdout }}
+    when: get_pid.stdout != ""
+    no_log: True
+ 
+  - name: Remove instance directory
+    file: 
+      path: "{{ jdg_jboss_home_dir }}" 
+      state: absent 
+    register: remove_jdg_result
+
+  - name: "Remove instance link for {{ jdg_instance_name }}"
+    shell: find "{{ wxx_dirs.app_dir }}" -lname  "{{ jdg_jboss_home_dir|basename }}" | xargs rm -f
+    args:
+      chdir: "{{ wxx_dirs.app_dir }}"
+    when: remove_jdg_result.changed
+
+  - name: "Manage jboss-jdg facts for {{ jdg_instance_name }}"
+    template: 
+      src: 'templates/jboss-jdg.csv.j2'
+      dest: "{{ wxx_dirs.fact_dir }}/jboss-jdg.csv"
+      mode: '0644'
+
+  when: jdg_instance_ensure == 'absent'
+

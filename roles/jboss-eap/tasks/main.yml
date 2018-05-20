@@ -1,0 +1,16 @@
+---
+- name: Initialize eap_refresh_list'
+  set_fact:
+    eap_refresh_list: []
+
+- name: Initialize eap_start_list
+  set_fact:
+    eap_start_list: []
+
+- name: Initialize eap_stop_list
+  set_fact:
+    eap_stop_list: []
+
+- include_tasks: manage_eap_instance.yml
+  with_items: "{{ eap_instances }}"
+  when: item.is_managed == true

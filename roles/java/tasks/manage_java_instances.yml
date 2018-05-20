@@ -1,0 +1,61 @@
+---
+### Install JDK
+- block:
+  - name: Manage JDK home dir
+    file:
+      dest: "{{ wxx_dirs.java_dir }}"
+      state: directory
+      mode: '0755'
+ 
+  - name: "Install JDK {{ java_version }}"
+    unarchive:
+      src: "{{ resources }}/{{ apptype }}/{{ java_arch_alias }}/{{ java_archive_name }}"
+      dest: "{{ wxx_dirs.java_dir }}"
+      remote_src: False
+      creates: "{{ java_home }}/bin"
+      extra_opts:
+        - '--preserve-permissions'      
+
+  - name: "Set link {{ java_link }} to {{ java_home }}"
+    file: 
+      src: "{{ java_home }}"
+      dest: "{{ wxx_dirs.java_dir }}/{{ java_link }}"
+      state: link
+    when: java_set_link == True
+ 
+  - name: Manage JCE
+    copy:
+      src: "{{ resources }}/{{ apptype }}/jce/jce_policy-{{ java_major_version }}/{{ java_jce_policy }}/{{ policy }}"
+      dest: "{{ java_home }}/jre/lib/security/{{ policy }}"
+    loop_control:
+      loop_var: policy
+    with_items:
+      - 'local_policy.jar'
+      - 'US_export_policy.jar'
+    when: java_major_version|int < 9
+
+  - name: Manage JCE Java9
+    replace:
+      path: "{{ java_home }}/conf/security/java.security"
+      regexp: 'crypto.policy=.*'
+      replace: "crypto.policy={{ java_jce_policy }}"
+    when: java_major_version|int > 8
+
+  when: java_ensure == 'present'
+ 
+### Remove JDK
+- block:
+
+  - name: Remove JDK
+    file:
+      dest: "{{ java_home }}"
+      state: absent
+    register: remove_jdk_result
+
+  - name: Remove link to JDK
+    shell: find {{ wxx_dirs.java_dir }} -lname {{ java_home }} | xargs rm -f
+    args:
+      chdir: "{{ wxx_dirs.java_dir }}"
+    when: remove_jdk_result.changed
+
+  when: java_ensure == 'absent'

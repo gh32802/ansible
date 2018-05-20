@@ -1,0 +1,25 @@
+---
+- name: restart-machine-agent
+  shell: 
+    "{{ appdynamics_machineagent_basedir }}/bin/stop.sh;nohup {{ appdynamics_machineagent_basedir }}/bin/start.sh &"
+  args:
+    chdir: "{{ appdynamics_machineagent_basedir }}/bin"
+    executable: /bin/bash
+  listen: "restart machine agent"
+  no_log: False
+
+- name: start_machine-agent
+  shell: 
+    "nohup {{ appdynamics_machineagent_basedir }}/bin/start.sh &"
+  args:
+    chdir: "{{ appdynamics_machineagent_basedir }}/bin"
+    executable: /bin/bash
+  listen: "start machine agent"
+  no_log: False
+
+- name: stop_machine-agent
+  shell: "{{ appdynamics_machineagent_basedir }}/bin/stop.sh"
+  args:
+    executable: /bin/bash
+  listen: "stop machine agent"
+  no_log: False

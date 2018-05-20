@@ -1,0 +1,104 @@
+apptype: tomcat
+tomcat_instances:
+  - name: 'tomcat8080'
+    ensure: 'present'
+    tomcat_version: "{{ tomcat_latest }}"
+    java_version: "{{ java_latest }}"
+    enable: False
+    status: 'running'
+    is_managed: True
+    managed_by: 'webstaff'
+    catalina_opts:
+      - '-server'
+      - '-Xms256m'
+      - '-Xmx256m'
+      - '-Djava.net.preferIPv4Stack=true'
+      - '-Djava.net.preferIPv4Addresses=true'
+      - '-Djava.awt.headless=true'
+      - '-Dservername=$SERVERNAME'
+    config_files: []
+    modules: []
+    appdynamics:
+      ensure: 'absent'
+      properties: {}
+    apps:
+      - path: 'ROOT' 
+        src: "{{ resources }}/apps"
+        file: 'ROOT.war'
+        ensure: 'present'
+        remote_src: no
+      - path: 'test' 
+        src: "{{ resources }}/apps"
+        file: 'test.war'
+        ensure: 'present'
+        remote_src: no
+tomcat_dirs:
+  - name: bin
+    mode: '0755'
+  - name: conf
+    mode: '0755'
+  - name: lib
+    mode: '0755'
+  - name: logs
+    mode: '0755'
+  - name: temp
+    mode: '0755'
+  - name: webapps
+    mode: '0755'
+  - name: work
+    mode: '0755'
+tomcat_conf_files:
+  - name: server.xml
+    state: file
+    mode: '0400'
+  - name: context.xml
+    state: file
+    mode: '0400'
+  - name: web.xml
+    state: file
+    mode: '0400'
+  - name: logging.properties
+    state: file
+    mode: '0400'
+  - name: catalina.properties
+    state: file
+    mode: '0400'
+    label: catalina_properties
+  - name: catalina.policy
+    state: file
+    mode: '0400'
+  - name: tomcat-users.xml
+    state: file
+    mode: '0400'
+tomcat_extra_conf_files_80:
+  - name: tomcat-users.xsd
+    state: file
+    mode: '0400'
+tomcat_extra_conf_files_85:
+  - name: tomcat-users.xsd
+    state: file
+    mode: '0400'
+  - name: jaspic-providers.xml
+    state: file
+    mode: '0400'
+  - name: jaspic-providers.xsd
+    state: file
+    mode: '0400'
+tomcat_excludes:
+  - 'LICENSE'
+  - 'NOTICE'
+  - 'RELEASE-NOTES'
+  - 'RUNNING.txt'
+  - 'bin/catalina.bat'
+  - 'bin/configtest.bat'
+  - 'bin/digest.bat'
+  - 'bin/setclasspath.bat'
+  - 'bin/shutdown.bat'
+  - 'bin/startup.bat'
+  - 'bin/tool-wrapper.bat'
+  - 'bin/version.bat'
+  - 'bin/tomcat-native.tar.gz'
+  - 'bin/commons-daemon-native.tar.gz'
+  - 'webapps/'
+stoptimeout: '60'
+starttimeout: '120'

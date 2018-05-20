@@ -1,0 +1,86 @@
+---
+## Deploy certs
+ 
+- block:
+
+  - name: "Create cert dir for {{ tomcat_instance_name }}"
+    file:
+      dest: "{{ wxx_dirs.sec_dir }}/{{ cert.cn }}"
+      state: directory
+      mode: '0755'
+    with_items: "{{ tomcat_certs }}"
+    loop_control:
+      loop_var: cert
+    no_log: False
+
+  - name: "Deploy certs for {{ tomcat_instance_name }}"
+    copy:
+      src: "{{ cert.src }}/{{ cert.cn }}/{{ cert.cn }}.cer"
+      dest: "{{ wxx_dirs.sec_dir }}/{{ cert.cn }}/{{ cert.cn }}.cer"
+      remote_src: "{{ cert.remote_src }}"
+    register: cert_result
+    notify: "restart-tomcat"
+    with_items: "{{ tomcat_certs }}"
+    loop_control:
+      loop_var: cert
+    no_log: False
+
+  - name: "Deploy cert keys for {{ tomcat_instance_name }}"
+    copy:
+      src: "{{ cert.src }}/{{ cert.cn }}/{{ cert.cn }}.key"
+      dest: "{{ wxx_dirs.sec_dir }}/{{ cert.cn }}/{{ cert.cn }}.key"
+      remote_src: "{{ cert.remote_src }}"
+    with_items: "{{ tomcat_certs }}"
+    loop_control:
+      loop_var: cert
+    no_log: False
+
+  - name: "Deploy ca_certs for {{ tomcat_instance_name }}"
+    copy:
+      src: "{{ cert.src }}/{{ cert.file }}"
+      dest: "{{ wxx_dirs.sec_dir }}/{{ cert.file }}"
+      remote_src: "{{ cert.remote_src }}"
+    register: cert_result
+    notify: "restart-tomcat"
+    with_items: "{{ tomcat_ca_certs }}"
+    loop_control:
+      loop_var: cert
+    no_log: False
+
+  when: cert.ensure == 'present'
+
+- name: "Manage tomcat_refresh_list for certs for {{ tomcat_instance_name }}"
+  set_fact: tomcat_refresh_list={{ tomcat_refresh_list + [ tomcat_instance_name ] }}
+  when: elem.changed and tomcat_instance_status == 'running'
+  with_items: "{{ cert_result.results }}"
+  loop_control:
+    loop_var: elem
+  tags:
+    - deploy
+  no_log: True
+
+## Undeploy cert
+
+- block:
+
+  - name: "Remove certs for {{ tomcat_instance_name }}"
+    file: 
+      dest: "{{ wxx_dirs.sec_dir }}/{{ cert.cn }}/{{ cert.cn }}.cer"
+      state: 'absent'
+    with_items: "{{ tomcat_certs }}"
+    loop_control:
+      loop_var: cert
+    when: cert.ensure == 'absent'
+    no_log: True
+
+  - name: "Remove keys for {{ tomcat_instance_name }}"
+    file: 
+      dest: "{{ wxx_dirs.sec_dir }}/{{ cert.cn }}/{{ cert.cn }}.key"
+      state: 'absent'
+    with_items: "{{ tomcat_certs }}"
+    loop_control:
+      loop_var: cert
+    no_log: True
+
+  when: cert.ensure == 'absent'
+

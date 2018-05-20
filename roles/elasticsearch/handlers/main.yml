@@ -1,0 +1,30 @@
+---
+- name: restart-elasticsearch
+  shell: "{{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh stop;nohup {{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh start &"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ item }}/bin"
+    executable: /bin/bash
+  with_items: "{{ elasticsearch_refresh_list | unique }}"
+  listen: "restart elasticsearch instance"
+  no_log: False
+
+- name: start_elasticsearch_instance
+  shell: "nohup {{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh start &"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ item }}/bin"
+    executable: /bin/bash
+  with_items: "{{ elasticsearch_start_list | unique }}"
+  listen: "start elasticsearch instance"
+  no_log: False
+  when: item not in elasticsearch_refresh_list
+
+- name: stop_elasticsearch_instance
+  shell: "{{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh stop"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ item }}/bin"
+    executable: /bin/bash
+  with_items: "{{ elasticsearch_stop_list | unique }}"
+  listen: "stop elasticsearch instance"
+  no_log: False
+  when: item not in elasticsearch_refresh_list
+

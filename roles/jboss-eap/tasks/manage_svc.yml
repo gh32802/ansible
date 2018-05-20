@@ -1,0 +1,118 @@
+---
+## Install startup services
+ 
+- block:
+
+  - block:
+
+    - name: "Manage init script for {{ eap_instance_name }}"
+      template:
+        dest: "{{ eap_jboss_base_dir }}/bin/init"
+        src: init.j2
+        mode: '0755'
+      register: init_result
+      no_log: False
+
+    - name: "Deploy init script for {{ eap_instance_name }}"
+      shell: sudo cp "{{ eap_jboss_base_dir }}/bin/init" "/etc/init.d/{{ eap_instance_name }}"
+      args:
+        executable: /bin/bash
+        warn: no
+      no_log: False
+      when: init_result.changed
+
+    - name: "Deploy init service for {{ eap_instance_name }}"
+      shell: sudo chkconfig "{{ eap_instance_name }}" on
+      args:
+        executable: /bin/bash
+        warn: no
+      no_log: False
+      when: init_result.changed
+
+    when: ansible_distribution_major_version|int < 7 
+
+  - block:
+    - name: "Manage unit script for {{ eap_instance_name }}"
+      template:
+        dest: "{{ eap_jboss_base_dir }}/bin/unit"
+        src: unit.j2
+        mode: '0644'
+      register: unit_result
+      no_log: False
+
+    - name: "Deploy unit script for {{ eap_instance_name }}"
+      shell: sudo cp "{{ eap_jboss_base_dir }}/bin/unit" "/usr/lib/systemd/system/{{ eap_instance_name }}.service"
+      args:
+        executable: /bin/bash
+        warn: no
+      no_log: False
+      when: unit_result.changed
+
+    - name: "Deploy systemd service for {{ eap_instance_name }}"
+      shell: sudo systemctl enable "{{ eap_instance_name }}"
+      args:
+        executable: /bin/bash
+        warn: no
+      no_log: False
+      when: unit_result.changed
+
+    when: ansible_distribution_major_version|int > 6 
+
+  when: eap_instance_enable == True
+
+## Uninstall startup services
+
+- block:
+
+  - block:
+    - name: "Remove init service for {{ eap_instance_name }}"
+      shell: sudo chkconfig "{{ eap_instance_name }}" off
+      args:
+        executable: /bin/bash
+        warn: no
+        removes: "/etc/init.d/{{ eap_instance_name }}"
+      no_log: False
+
+    - name: "Remove init script for {{ eap_instance_name }}"
+      shell: sudo rm -f "/etc/init.d/{{ eap_instance_name }}"
+      args:
+        executable: /bin/bash
+        warn: no
+        removes: "/etc/init.d/{{ eap_instance_name }}"
+      no_log: False
+
+    - name: "Remove init script source for {{ eap_instance_name }}"
+      file:
+        path: "{{ eap_jboss_base_dir }}/bin/init"
+        state: absent
+      no_log: False
+
+    when: ansible_distribution_major_version|int < 7 
+
+  - block:
+
+    - name: "Remove systemd service for {{ eap_instance_name }}"
+      shell: sudo systemctl disable "{{ eap_instance_name }}"
+      args:
+        executable: /bin/bash
+        warn: no
+        removes: "/etc/systemd/system/multi-user.target.wants/{{ eap_instance_name }}.service"
+      no_log: False
+
+    - name: "Remove unit script for {{ eap_instance_name }}"
+      shell: sudo rm -f "/usr/lib/systemd/system/{{ eap_instance_name }}.service"
+      args:
+        executable: /bin/bash
+        warn: no
+        removes: "/usr/lib/systemd/system/{{ eap_instance_name }}.service"
+      no_log: False
+
+    - name: "Remove unit script source for {{ eap_instance_name }}"
+      file:
+        path: "{{ eap_jboss_base_dir }}/bin/unit"
+        state: absent
+      no_log: False
+
+    when: ansible_distribution_major_version|int > 6 
+
+  when: eap_instance_enable == False

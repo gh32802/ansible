@@ -1,0 +1,6 @@
+java_instances:
+  - version: '8u151'
+    ensure: 'present'
+    link: 'latest'
+    set_link: True
+    jce_policy: 'unlimited'

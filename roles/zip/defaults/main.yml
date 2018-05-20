@@ -1,0 +1,10 @@
+apptype: zip
+zip_dirs:
+  - path: '/wxx/data'
+    state: directory
+    mode: '0755'
+    bin_dir: ''
+    start_cmd: ''
+    stop_cmd: ''
+    status: ''
+    is_managed: True

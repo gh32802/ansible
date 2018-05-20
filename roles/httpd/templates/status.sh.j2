@@ -1,0 +1,14 @@
+#!/bin/bash
+
+HTTPDCONF="{{ httpd_serverroot }}/conf/httpd.conf"
+PID=($( ps -ef |grep httpd|egrep -v 'grep|webuser|bash|service|systemctl'|grep root))
+
+if [ -z "${PID[1]}" ]
+then
+  echo "HTTPD is not running"
+else
+  UPTIME=$(date -d "`ps -p ${PID[1]} -o lstart=`" +'%d.%m.%Y-%H:%M:%S')
+  echo "HTTPD is running since $UPTIME (PID=${PID[1]})"
+fi
+
+exit $?

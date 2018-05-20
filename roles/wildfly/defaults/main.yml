@@ -1,0 +1,34 @@
+apptype: wildfly
+wildfly_instances:
+  - name: 'wildfly8080'
+    enable: False
+    ensure: 'present'
+    status: 'running'
+    is_managed: True
+    managed_by: 'webstaff'
+    wildfly_version: "{{ wildfly_latest }}"
+    java_version: "{{ java_latest }}"
+    jboss_opts: []
+    java_opts:
+      - '-Xms1024m'
+      - '-Xmx1024m'
+      - '-Djava.net.preferIPv4Stack=true'
+      - '-Djboss.modules.system.pkgs=$JBOSS_MODULES_SYSTEM_PKGS'
+      - '-Djava.awt.headless=true'
+      - '-Djboss.modules.policy-permissions=true'
+      - '-Djboss.socket.binding.port-offset=$JBOSS_PORT_OFFSET'
+      - '-Djboss.node.name=$NODENAME'
+      - '-Djboss.bind.address=0.0.0.0'
+      - '-Djboss.bind.address.management=127.0.0.1'
+    configuration_xml:
+      name: 'standalone.xml'
+      deploy: False
+      src: ''
+    configuration_inserts: []
+    config_files: []
+    module_base_path: 'modules/system/layers/base'
+    artifacts: []
+    modules: []
+    appdynamics:
+      ensure: 'absent'
+      properties: {}

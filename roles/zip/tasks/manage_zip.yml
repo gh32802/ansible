@@ -1,0 +1,104 @@
+---
+- block:
+  - name: Install ZIP directories
+    file: 
+      path: "{{ zip_dir.path }}" 
+      state: "{{ zip_dir.state }}"
+      mode: "{{ zip_dir.mode }}"
+
+  - name: Check if ZIP server is deployed
+    stat: 
+      path: "{{ zip_dir.bin_dir }}"
+    register: stat_result
+
+  - block:
+    - name: Get zip server status
+      shell: "ps -ef|grep {{ zip_dir.bin_dir }}|grep -v grep|awk '{ print $2 }'"
+      args:
+        executable: /bin/bash
+      register: zip_server_pid_result
+      changed_when: zip_server_pid_result.rc != 0
+      no_log: True
+      check_mode: no
+      tags:
+        - get_status
+
+    - name: Check if ZIP server start command exists
+      stat: 
+        path: "{{ zip_dir.bin_dir }}/{{ zip_dir.start_cmd }}"
+      register: start_cmd_result
+
+    - name: Check if ZIP server stop command exists
+      stat: 
+        path: "{{ zip_dir.bin_dir }}/{{ zip_dir.stop_cmd }}"
+      register: stop_cmd_result
+
+    - name: "Set zip_server_start_list for {{ zip_dir.bin_dir }}"
+      set_fact: zip_server_start_list={{ zip_server_start_list + [ zip_dir.bin_dir + '/' + zip_dir.start_cmd ] }}
+      notify: "start zip server"
+      changed_when: zip_server_pid_result.stdout == ""
+      when: 
+        - zip_server_status == 'running' 
+        - zip_server_pid_result.stdout == ""
+        - start_cmd_result.stat.executable is defined
+      tags:
+        - start
+      no_log: True
+
+    - name: "Set zip_server_stop_list for {{ zip_dir.bin_dir }}"
+      set_fact: zip_server_stop_list={{ zip_server_stop_list + [ zip_dir.bin_dir + '/' + zip_dir.stop_cmd ] }}
+      notify: "stop zip server"
+      changed_when: zip_server_pid_result.stdout != ""
+      when: 
+        - zip_server_status == 'stopped' 
+        - zip_server_pid_result.stdout != ""
+        - stop_cmd_result.stat.executable is defined
+      tags:
+        - stop
+      no_log: True
+
+    - name: "Set zip_server_kill_list for {{ zip_dir.bin_dir }}"
+      set_fact: zip_server_kill_list={{ zip_server_kill_list + [ zip_server_pid_result.stdout ] }}
+      notify: "kill zip server"
+      changed_when: zip_server_pid_result.stdout != ""
+      when: 
+        - zip_server_status == 'stopped'
+        - zip_server_pid_result.stdout != ""
+        - stop_cmd_result.stat.executable is not defined
+      tags:
+        - stop
+      no_log: True
+    when : stat_result.stat.isdir is defined
+ 
+  when: zip_dir.state != 'absent'
+  
+- block: 
+  - name: Check if ZIP server is deployed
+    stat: 
+      path: "{{ zip_dir.bin_dir }}"
+    register: stat_result
+
+  - name: Get zip server status
+    shell: "ps -ef|grep {{ zip_dir.bin_dir }}|grep -v grep|awk '{ print $2 }'"
+    args:
+      executable: /bin/bash
+    register: zip_server_pid_result
+    changed_when: zip_server_pid_result.rc != 0
+    no_log: True
+    check_mode: no
+    tags:
+      - get_status
+
+  - name: "Kill ZIP service {{ zip_dir.bin_dir }}"
+    command: kill -9 {{ zip_server_pid_result.stdout }}
+    tags:
+      - stop
+    no_log: True
+    when: zip_server_pid_result.stdout != ""
+
+  - name: Remove ZIP directories
+    file: 
+      path: "{{ zip_dir.path }}" 
+      state: "{{ zip_dir.state }}"
+ 
+  when: zip_dir.state == 'absent'

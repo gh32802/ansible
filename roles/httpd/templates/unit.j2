@@ -1,0 +1,14 @@
+[Unit]
+Description=httpd-wxx
+After=network.target
+
+[Service]
+Type=forking
+WorkingDirectory={{ base_dir }}/httpd/bin
+User=webuser
+ExecStart=/bin/bash {{ base_dir }}/httpd/bin/start.sh
+ExecStop=/bin/bash {{ base_dir }}/httpd/bin/stop.sh
+ExecRestart=/bin/bash {{ base_dir }}/httpd/bin/restart.sh
+
+[Install]
+WantedBy=multi-user.target

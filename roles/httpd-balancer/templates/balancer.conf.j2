@@ -1,0 +1,23 @@
+{% set space = '  ' %}
+ProxyRequests Off
+ProxyVia Off
+ProxyPreserveHost On
+ProxyErrorOverride Off
+ProxyTimeout 10
+
+<Location /lbmanager>
+   SetHandler balancer-manager
+</Location>
+
+ProxyPass /lbmanager !
+RedirectMatch ^/$ /lbmanager
+
+<Proxy balancer://democluster>
+{% for member in httpd_balancer_member -%} 
+{{space}}BalancerMember http://{{member}}:{{ httpd_balancer_port }}
+{% endfor -%}
+  ProxySet timeout=10
+</Proxy>
+
+ProxyPass /test/ balancer://democluster/test/
+ProxyPassReverse /test/ balancer://democluster/test/

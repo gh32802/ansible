@@ -1,0 +1,127 @@
+tomcat_instances:
+  - name: 'tomcat7080'
+    enable: False
+    ensure: 'present'
+    status: 'running'
+    is_managed: True
+    managed_by: 'webstaff'
+    tomcat_version: '8.5.23'
+    java_version: '8u151'
+    stop_maint_delay: '15m'
+    catalina_opts:
+      - '-server'
+      - '-Xms1024m'
+      - '-Xmx1024m'
+      - '-XX:MaxMetaspaceSize=256m'
+      - '-Djava.net.preferIPv4Stack=true'
+      - '-Djava.net.preferIPv4Addresses=true'
+      - '-Djava.awt.headless=true'
+      - '-Dservername=$SERVERNAME'
+    keystores:
+      - name: 'keystore.jks'
+        src: "{{ resources }}/certs/tomcat.local.net"
+        remote_src: False
+        ensure: 'present'
+    config_files:
+      - name: server.xml
+        state: file
+        mode: '0400'
+      - name: context.xml
+        state: file
+        mode: '0400'
+      - name: catalina.properties
+        state: file
+        mode: '0400'
+      - name: logging.properties
+        state: file
+        mode: '0400'
+    modules:
+      - name: db2
+        version: '4.22.29'
+        ensure: 'present'
+        file: 'db2jcc.jar'
+        remote_src: 'no'
+      - name: db2
+        version: '4.22.29'
+        ensure: 'present'
+        file: 'db2jcc_license_cisuz.jar'
+        remote_src: 'no'
+      - name: pdq
+        version: '3.300.29'
+        ensure: 'present'
+        file: 'pdq.jar'
+        remote_src: 'no'        
+    apps:
+      - path: 'ROOT'
+        file: 'ROOT.war'
+        src: "{{ resources }}/apps"
+        ensure: 'present'
+        remote_src: 'no'
+      - path: 'test'
+        file: 'test.war'
+        src: "{{ resources }}/apps"
+        ensure: 'present'
+        remote_src: 'no'
+  - name: 'tomcat8080'
+    enable: False
+    ensure: 'present'
+    status: 'running'
+    is_managed: True
+    managed_by: 'webstaff'
+    tomcat_version: '8.5.23'
+    java_version: '8u151'
+    stop_maint_delay: '15m'
+    catalina_opts:
+      - '-server'
+      - '-Xms1024m'
+      - '-Xmx1024m'
+      - '-XX:MaxMetaspaceSize=256m'
+      - '-Djava.net.preferIPv4Stack=true'
+      - '-Djava.net.preferIPv4Addresses=true'
+      - '-Djava.awt.headless=true'
+      - '-Dservername=$SERVERNAME'
+    keystores:
+      - name: 'keystore.jks'
+        src: "{{ resources }}/certs/tomcat.local.net"
+        remote_src: False
+        ensure: 'present'
+    config_files:
+      - name: server.xml
+        state: file
+        mode: '0400'
+      - name: context.xml
+        state: file
+        mode: '0400'
+      - name: catalina.properties
+        state: file
+        mode: '0400'
+      - name: logging.properties
+        state: file
+        mode: '0400'
+    modules:
+      - name: db2
+        version: '4.22.29'
+        ensure: 'present'
+        file: 'db2jcc.jar'
+        remote_src: 'no'
+      - name: db2
+        version: '4.22.29'
+        ensure: 'present'
+        file: 'db2jcc_license_cisuz.jar'
+        remote_src: 'no'
+      - name: pdq
+        version: '3.300.29'
+        ensure: 'present'
+        file: 'pdq.jar'
+        remote_src: 'no'        
+    apps:
+      - path: 'ROOT'
+        file: 'ROOT.war'
+        src: "{{ resources }}/apps"
+        ensure: 'present'
+        remote_src: 'no'
+      - path: 'test'
+        file: 'test.war'
+        src: "{{ resources }}/apps"
+        ensure: 'present'
+        remote_src: 'no'

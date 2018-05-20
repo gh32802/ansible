@@ -1,0 +1,43 @@
+---
+### Manage mod_jk
+- block:
+
+  - name: Install mod_jk
+    copy:
+      src: "{{ resources }}/httpd/{{ httpd_version[0:3] }}/mod_jk/{{ lib }}/mod_jk.so"
+      dest: "/wxx/httpd/lib/mod_jk.so"
+      mode: '0755'
+
+  - name: Manage config files in conf.web
+    template:
+      src: "templates/{{ item }}.j2"
+      dest: "{{ httpd_serverroot }}/conf.d/{{ item }}"
+    with_items: 
+      - 'mod_jk.conf'
+      - 'workers.properties'
+    notify: "restart httpd"
+    no_log: False
+
+  when: httpd_mod_jk_ensure == 'present'
+
+### Uninstall HTTPD
+
+- block:
+
+  - name: Remove mod_jk
+    file:
+      dest: "/wxx/httpd/lib/mod_jk.so"
+      state: absent
+    notify: "restart httpd"
+
+  - name: Remove config files in conf.web
+    file:
+      dest: "{{ httpd_serverroot }}/conf.d/{{ item }}"
+      state: absent
+    with_items: 
+      - 'mod_jk.conf'
+      - 'workers.properties'
+    notify: "restart httpd"
+    no_log: False
+
+  when: httpd_mod_jk_ensure == 'absent'

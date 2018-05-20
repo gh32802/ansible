@@ -1,0 +1,58 @@
+httpd:
+  ensure: 'present'
+  enable: False
+  state: 'running'
+  serverroot: '/wxx/httpd'
+  documentroot: '/wxx/data/httpd/htdocs'
+  rootdir: '/wxx/data/httpd'
+  servertokens: 'ProductOnly'
+  serversignature: 'Off'
+  use_default_vhost: false
+  managed_by: 'webstaff'
+  user: 'apache'
+  group: 'apache'
+  ports:
+    - 80
+    - 443
+  options: "-Multiviews -Indexes +IncludesNoEXEC +SymLinksIfOwnerMatch"
+  mod_jk:
+    ensure: 'absent'
+  modules:
+    - name: 'mod_ssl'
+      ensure: 'present'
+  conf_web:
+    - 'modules.conf'
+    - 'tuning.conf'
+    - 'mod_proxy.conf'
+    - 'mod_rewrite_trace_block.conf'
+    - 'httpd_logrotate'
+  vhosts:
+    - servername: 'webserver.local.net'
+      documentroot: '/wxx/data/httpd/webserver.local.net/htdocs'
+      ensure: 'present'
+      listen_ip: '*'
+      listen_port: 80
+      extra_parameters: |
+        RewriteEngine On
+          RewriteCond %{HTTPS} off
+          RewriteRule (.*) https://%{HTTP_HOST}%{REQUEST_URI}
+  vhosts_ssl:
+    - servername: 'webserver.local.net'
+      document_root: '/wxx/data/httpd/webserver.local.net/htdocs'
+      ensure: 'present'
+      listen_port: 443
+      certificate_file: 'webserver.local.net.cer'
+      certificate_key_file: 'webserver.local.net.key'
+      certificate_chain_file: 'webca.crt'
+      extra_parameters: |
+        ProxyPreserveHost On
+        SSLProxyEngine On
+        SSLProxyVerify none
+        SSLProxyCheckPeerCN off
+        SSLProxyCheckPeerName off
+        SSLProxyCheckPeerExpire off
+
+        ProxyPass / https://webserver.local.net:8443/
+        ProxyPassReverse / https://webserver.local.net:8433/
+
+

@@ -1,0 +1,22 @@
+---
+- name: Initialize tomcat_refresh_list
+  set_fact:
+    tomcat_refresh_list: []
+  tags:
+    - init
+
+- name: Initialize tomcat_start_list
+  set_fact:
+    tomcat_start_list: []
+  tags:
+    - init
+
+- name: Initialize tomcat_stop_list
+  set_fact:
+    tomcat_stop_list: []
+  tags:
+    - init
+
+- include_tasks: manage_tomcat_instance.yml
+  with_items: "{{ tomcat_instances }}"
+  when: item.is_managed == true

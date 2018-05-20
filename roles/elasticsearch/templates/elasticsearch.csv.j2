@@ -1,0 +1,8 @@
+{% if elasticsearch_instances is defined %}
+node,appserver_type,appserver_name,appserver_version,java_version,managed_by
+{% for item in elasticsearch_instances %}
+{% if item.ensure == 'present' %}
+{{ ansible_fqdn }},elasticsearch,{{ item.name }},{{ item.elasticsearch_version }},{{ item.java_version }},{{ item.managed_by }}
+{% endif %}
+{% endfor %}
+{% endif %}

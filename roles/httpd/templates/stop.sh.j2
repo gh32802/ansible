@@ -1,0 +1,21 @@
+#!/bin/bash
+
+HTTPDCONF="{{ httpd_serverroot }}/conf/httpd.conf"
+HOST={{ ansible_fqdn }}
+MAINT_STOP_DELAY={{ httpd_maint_stop_delay }}
+HTTPD_PORTS="{{ httpd_ports }}"
+INSTANCE=httpd
+PID=($( ps -ef |grep httpd|egrep -v 'grep|webuser|bash|service|systemctl'|grep root))
+
+if [ -z "${PID[1]}" ]
+then
+  echo "HTTPD is not running"
+else
+  for PORT in $HTTPD_PORTS
+  do
+    /wxx/app/scripts/start_maint.sh $HOST $PORT $INSTANCE
+  done
+  sudo /usr/sbin/httpd -f $HTTPDCONF -k stop
+fi
+
+exit $?

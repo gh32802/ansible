@@ -1,0 +1,104 @@
+---
+- block:
+  - name: Install JSA directories
+    file: 
+      path: "{{ jsa_dir.path }}" 
+      state: "{{ jsa_dir.state }}"
+      mode: "{{ jsa_dir.mode }}"
+
+  - name: Check if JSA server is deployed
+    stat: 
+      path: "{{ jsa_dir.bin_dir }}"
+    register: stat_result
+
+  - block:
+    - name: Get jsa server status
+      shell: "ps -ef|grep {{ jsa_dir.bin_dir }}|grep -v grep|awk '{ print $2 }'"
+      args:
+        executable: /bin/bash
+      register: jsa_server_pid_result
+      changed_when: jsa_server_pid_result.rc != 0
+      no_log: True
+      check_mode: no
+      tags:
+        - get_status
+
+    - name: Check if JSA server start command exists
+      stat: 
+        path: "{{ jsa_dir.bin_dir }}/start.sh"
+      register: start_cmd_result
+
+    - name: Check if JSA server stop command exists
+      stat: 
+        path: "{{ jsa_dir.bin_dir }}/stop.sh"
+      register: stop_cmd_result
+
+    - name: "Set jsa_server_start_list for {{ jsa_dir.bin_dir }}"
+      set_fact: jsa_server_start_list={{ jsa_server_start_list + [ jsa_dir.bin_dir ] }}
+      notify: "start jsa server"
+      changed_when: jsa_server_pid_result.stdout == ""
+      when: 
+        - jsa_server_status == 'running' 
+        - jsa_server_pid_result.stdout == ""
+        - start_cmd_result.stat.executable is defined
+      tags:
+        - start
+      no_log: True
+
+    - name: "Set jsa_server_stop_list for {{ jsa_dir.bin_dir }}"
+      set_fact: jsa_server_stop_list={{ jsa_server_stop_list + [ jsa_dir.bin_dir ] }}
+      notify: "stop jsa server"
+      changed_when: jsa_server_pid_result.stdout != ""
+      when: 
+        - jsa_server_status == 'stopped' 
+        - jsa_server_pid_result.stdout != ""
+        - stop_cmd_result.stat.executable is defined
+      tags:
+        - stop
+      no_log: True
+
+    - name: "Set jsa_server_kill_list for {{ jsa_dir.bin_dir }}"
+      set_fact: jsa_server_kill_list={{ jsa_server_kill_list + [ jsa_server_pid_result.stdout ] }}
+      notify: "kill jsa server"
+      changed_when: jsa_server_pid_result.stdout != ""
+      when: 
+        - jsa_server_status == 'stopped'
+        - jsa_server_pid_result.stdout != ""
+        - stop_cmd_result.stat.executable is not defined
+      tags:
+        - stop
+      no_log: True
+    when : stat_result.stat.isdir is defined
+ 
+  when: jsa_dir.state != 'absent'
+  
+- block: 
+  - name: Check if JSA server is deployed
+    stat: 
+      path: "{{ jsa_dir.bin_dir }}"
+    register: stat_result
+
+  - name: Get jsa server status
+    shell: "ps -ef|grep {{ jsa_dir.bin_dir }}|grep -v grep|awk '{ print $2 }'"
+    args:
+      executable: /bin/bash
+    register: jsa_server_pid_result
+    changed_when: jsa_server_pid_result.rc != 0
+    no_log: True
+    check_mode: no
+    tags:
+      - get_status
+
+  - name: "Kill JSA service {{ jsa_dir.bin_dir }}"
+    command: kill -9 {{ jsa_server_pid_result.stdout }}
+    tags:
+      - stop
+    no_log: True
+    when: jsa_server_pid_result.stdout != ""
+
+  - name: Remove JSA directories
+    file: 
+      path: "{{ jsa_dir.path }}" 
+      state: "{{ jsa_dir.state }}"
+ 
+  when: jsa_dir.state == 'absent'

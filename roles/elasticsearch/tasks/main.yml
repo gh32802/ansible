@@ -1,0 +1,16 @@
+---
+- name: Initialize elasticsearch_refresh_list'
+  set_fact:
+    elasticsearch_refresh_list: []
+
+- name: Initialize elasticsearch_start_list
+  set_fact:
+    elasticsearch_start_list: []
+
+- name: Initialize elasticsearch_stop_list
+  set_fact:
+    elasticsearch_stop_list: []
+
+- include_tasks: manage_elasticsearch_instance.yml
+  with_items: "{{ elasticsearch_instances }}"
+  when: item.is_managed == true

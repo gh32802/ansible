@@ -1,0 +1,62 @@
+---
+#- name: start maintenance before restart
+#  local_action: 
+#    command "{{ ansible_home }}/scripts/start_maintenance.sh" {{ ansible_fqdn }} {{ item }} 
+#  with_items: 
+#    - 80
+#    - 443
+#  listen: "restart httpd"
+#  no_log: False
+
+- name: restart-httpd
+  shell: "{{ httpd_serverroot }}/bin/restart.sh"
+  args:
+    chdir: "{{ httpd_serverroot }}/bin"
+    executable: /bin/bash
+  listen: "restart httpd"
+  no_log: False
+  when:
+    - httpd_state == 'running'
+
+#- name: stop maintenance after restart
+#  local_action: 
+#    command "{{ ansible_home }}/scripts/stop_maintenance.sh" {{ ansible_fqdn }} {{ item }} {{ stop_maint_delay }}
+#  with_items:
+#    - 80
+#    - 443
+#  listen: "restart httpd"
+#  no_log: False
+
+- name: start_httpd
+  shell: "{{ httpd_serverroot }}/bin/start.sh"
+  args:
+    chdir: "{{ httpd_serverroot }}/bin"
+    executable: /bin/bash
+  listen: "start httpd"
+  no_log: False
+
+#- name: stop maintenance
+#  local_action: 
+#    command "{{ ansible_home }}/scripts/stop_maintenance.sh" {{ ansible_fqdn }} {{ item }} {{ stop_maint_delay }}
+#  with_items: 
+#    - 80
+#    - 443
+#  listen: "start httpd"
+#  no_log: False
+
+#- name: start maintenance
+#  local_action: 
+#    command "{{ ansible_home }}/scripts/start_maintenance.sh" {{ ansible_fqdn }} {{ item }}
+#  with_items:
+#    - 80
+#    - 443
+#  listen: "stop httpd"
+#  no_log: False
+
+- name: stop_httpd
+  shell: "{{ httpd_serverroot }}/bin/stop.sh"
+  args:
+    chdir: "{{ httpd_serverroot }}/bin"
+    executable: /bin/bash
+  listen: "stop httpd"
+  no_log: False

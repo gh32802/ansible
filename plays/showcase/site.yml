@@ -1,0 +1,30 @@
+---
+ - hosts: showcase-test-webapp
+   remote_user: webuser
+   gather_facts: False
+
+   vars:
+     ansible_home: "{{ lookup('env','ANSIBLE_HOME') }}"
+     wsa_environment: showcase-test
+     wsa_nodegroup: showcase-test-webapp
+
+   vars_files:
+     - "{{ ansible_home }}/defaults/main.yml"
+     - "vars/java.yml"
+     - "vars/httpd.yml"
+     - "vars/tomcat.yml"
+     - "vars/jboss-jdg.yml"
+     - "vars/zip.yml"
+
+   pre_tasks:
+     - name: Gather facts
+       setup:
+         filter: ansible_*
+
+   roles:
+     - web-base
+     - httpd
+     - java
+     - tomcat
+     - jboss-jdg
+     - zip

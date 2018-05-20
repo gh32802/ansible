@@ -1,0 +1,57 @@
+---
+## Deploy main configuration file
+
+- name: "Copy {{ eap_configuration_xml_name }} for {{ eap_instance_name }}"
+  copy:
+    src: "{{ eap_configuration_xml_src }}/{{ eap_configuration_xml_name }}"
+    dest: "{{ wxx_dirs.app_dir }}/{{ eap_instance_name }}/standalone/configuration/{{ eap_configuration_xml_name }}.tpl"
+    remote_src: "{{ eap_configuration_xml_remote_src }}"
+  no_log: False
+  changed_when: False
+  register: check_configuration_xml
+
+- name: "Prepare {{ eap_configuration_xml_name }} with inserts for {{ eap_instance_name }}"
+  blockinfile:
+    dest: "{{ wxx_dirs.app_dir }}/{{ eap_instance_name }}/standalone/configuration/{{ eap_configuration_xml_name }}.tpl"
+    marker: "<!-- {mark} ANSIBLE MANAGED BLOCK {{ insert.name }} -->"
+    block: "{{ lookup('file', \"files/{{ eap_instance_name }}/{{ insert.file }}\") }}"
+    insertafter: "<!--{{ insert.name }}_DESCRIPTION-->"
+  register: configuration_xml_result
+  with_items: "{{ eap_configuration_inserts }}"
+  loop_control:
+    loop_var: insert
+  no_log: False
+  changed_when: False
+  when: eap_configuration_inserts != []
+
+- name: "Deploy {{ eap_configuration_xml_name }} {{ eap_instance_name }} check mode"
+  copy:
+    src: "{{ wxx_dirs.app_dir }}/{{ eap_instance_name }}/standalone/configuration/{{ eap_configuration_xml_name }}.tpl"
+    dest: "{{ eap_jboss_base_dir }}/standalone/configuration/{{ eap_configuration_xml_name }}"
+    remote_src: True
+  register: check_deploy_result
+  no_log: False
+  check_mode: yes
+
+- name: "Stop EAP instance {{ eap_instance_name }}"
+  shell: "{{ wxx_dirs.app_dir }}/{{ eap_instance_name }}/bin/proc.sh stop"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ eap_instance_name }}/bin"
+    executable: /bin/bash
+  when: check_deploy_result.changed
+
+- name: "Deploy {{ eap_configuration_xml_name }} {{ eap_instance_name }}"
+  copy:
+    src: "{{ wxx_dirs.app_dir }}/{{ eap_instance_name }}/standalone/configuration/{{ eap_configuration_xml_name }}.tpl"
+    dest: "{{ eap_jboss_base_dir }}/standalone/configuration/{{ eap_configuration_xml_name }}"
+    remote_src: True
+  register: deploy_result
+  notify: "restart eap instance"
+  no_log: False
+
+- name: "Set eap_refresh_list for {{ eap_configuration_xml_name }}"
+  set_fact: eap_refresh_list={{ eap_refresh_list + [ eap_instance_name ] }}
+  when: deploy_result.changed
+  tags:
+    - deploy
+  no_log: True

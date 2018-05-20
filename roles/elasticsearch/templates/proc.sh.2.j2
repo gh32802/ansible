@@ -1,0 +1,142 @@
+#!/bin/bash
+
+ES_ENV_FILE="$(dirname $0)/setenv.sh"
+
+if [ -f "$ES_ENV_FILE" ]; then
+    . "$ES_ENV_FILE"
+fi
+
+if [ ${ES_USER} != $USER ]
+then
+        echo "USER must be \"$RUNUSER\". EXIT!"
+        exit 1
+fi
+
+ACTION=$1
+USAGE="$(basename $0) start|stop|restart|status"
+PID=""
+HOST={{ ansible_fqdn }}
+INSTANCE={{ elasticsearch_instance_name }}
+MAINT_STOP_DELAY={{ maint_stop_delay }}
+
+typeset -i START_TIMEOUT=${ES_START_TIMEOUT:-60}
+typeset -i STOP_TIMEOUT=${ES_STOP_TIMEOUT:-10}
+typeset -i RC=0
+typeset -i running=0
+typeset -i count=0
+
+get_pid() {
+        proc=($(ps -ef|grep es.node.name=$ES_NODE_NAME|grep -v grep))
+        echo "${proc[1]}"
+}
+
+start() {
+        typeset -i rc=0
+        PID=$(get_pid)
+        if [ -z "$PID" ]
+        then
+          req_start=$(date +%s)
+          $ES_HOME/bin/elasticsearch -d
+          echo -n "Starting ELASTICSEARCH instance $ES_NODE_NAME:"
+          status=1
+          while (( $status != 0 ))
+          do
+            bash -c "cat < /dev/null > /dev/tcp/0.0.0.0/${ES_HTTP_PORT}" > /dev/null 2>&1
+            status=$?
+            if (( $status == 0 ))
+            then
+              req_end=$(date +%s)
+              runtime=$(($req_end-$req_start))
+              echo -e "\tOK (Startup time: ${runtime}s)"
+              rc=0
+              break
+            fi
+            sleep 1
+            START_TIMEOUT=$START_TIMEOUT-1
+            if  (( $START_TIMEOUT <= 0 ))
+            then
+              req_end=$(date +%s)
+              runtime=$(($req_end-$req_start))
+              echo -e "\tERROR: TIMEOUT reached (elapsed time: ${runtime}s)!"
+              rc=1
+              break
+            fi
+          done
+        else
+          echo "Instance $ES_NODE_NAME is already running"
+          rc=0
+        fi
+        return $rc
+}
+stop() {
+        PID=$(get_pid)
+        if [ -z "$PID" ]
+        then
+          echo "Instance $ES_NODE_NAME is not running"
+          return 0
+        else
+          echo -n "Stopping instance $ES_NODE_NAME: "
+          PID=$(get_pid)
+          kill $PID
+          PID=$(get_pid)
+          while [ ! -z "$PID" ]
+          do
+             sleep 1
+             STOP_TIMEOUT=$STOP_TIMEOUT-1
+             if [ $STOP_TIMEOUT -le 0 ]
+             then
+               kill -9 $PID
+               echo -e "\tTIMEOUT reached, Server killed!"
+               break
+             fi
+             PID=$(get_pid)
+          done
+          echo -e "\tOK"
+          return 0
+        fi
+}
+
+case $ACTION in
+
+        start)
+                start
+                RC=$?
+                if (( $RC == 0 ))
+                then
+                  /wxx/app/scripts/stop_maint.sh $HOST $ES_HTTP_PORT $MAINT_STOP_DELAY $INSTANCE &
+                  disown
+                fi
+                exit $RC
+                ;;
+        stop)
+                /wxx/app/scripts/start_maint.sh $HOST $ES_HTTP_PORT $INSTANCE
+                stop
+                RC=$?
+                exit $RC
+                ;;
+        restart)
+                /wxx/app/scripts/start_maint.sh $HOST $ES_HTTP_PORT $INSTANCE
+                stop && start
+                RC=$?
+                if (( $RC == 0 ))
+                then
+                  /wxx/app/scripts/stop_maint.sh $HOST $ES_HTTP_PORT $MAINT_STOP_DELAY $INSTANCE &
+                  disown
+                fi
+                exit $RC
+                ;;
+        status)
+                PID=$(get_pid)
+                if [ -z "$PID" ]
+                then
+                  echo "Instance $ES_NODE_NAME is not running"
+                  exit 3
+                else
+                  proc_uptime=$(date -d "`ps -p $PID -o lstart=`" +'%d.%m.%Y-%H:%M:%S')
+                  echo "Instance $ES_NODE_NAME is running since $proc_uptime (PID: $PID)"
+                  exit 0
+                fi
+                ;;
+        *)      echo $USAGE
+                ;;
+esac

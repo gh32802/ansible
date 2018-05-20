@@ -1,0 +1,4 @@
+{% if httpd_ensure == 'present' %}
+node,appserver_type,appserver_name,appserver_version,java_version,managed_by
+{{ ansible_fqdn }},httpd,httpd,{{ httpd_version }},n/a,{{ httpd.managed_by }}
+{% endif %}

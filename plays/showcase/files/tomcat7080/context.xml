@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Context>
+
+    <WatchedResource>WEB-INF/web.xml</WatchedResource>
+    <WatchedResource>${catalina.base}/conf/web.xml</WatchedResource>
+
+    <JarScanner scanManifest="false"/>
+    
+    <Parameter name="wicket.configuration" override="false" value="deployment" />
+    <ResourceLink name="cas.standalone.config" global="cas.standalone.config" type="java.lang.String"/>
+    <ResourceLink name="cas/serverName" global="cas/serverName" type="java.lang.String"/>
+    <ResourceLink name="cas/casServerUrlPrefix" global="cas/casServerUrlPrefix" type="java.lang.String"/>
+    <ResourceLink name="ldap.bindDn" global="self-service/ldap/bindDn" type="java.lang.String"/>
+    <ResourceLink name="ldap.baseDn" global="self-service/ldap/baseDn" type="java.lang.String"/>
+    <ResourceLink name="ldap.pwd" global="self-service/ldap/pwd" type="java.lang.String"/>
+    <ResourceLink name="ldap.url" global="self-service/ldap/url" type="java.lang.String"/>
+
+</Context>

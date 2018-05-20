@@ -1,0 +1,64 @@
+---
+## Deploy app
+ 
+- name: "Deploy apps for {{ wildfly_instance_name }} check mode"
+  copy:
+    src: "{{ app.src }}/{{ app.file }}"
+    dest: "{{ wildfly_jboss_base_dir }}/standalone/deployments/{{ app.file }}"
+    remote_src: "{{ app.remote_src }}"
+  register: deploy_result
+  notify: "restart wildfly instance"
+  with_items: "{{ wildfly_apps }}"
+  loop_control:
+    loop_var: app
+  no_log: False
+  when: app.ensure == 'present'
+  check_mode: yes
+
+- block:
+
+  - name: "Set maint for for {{ wildfly_instance_name }}"
+    debug: msg="{{ wxx_dirs.app_dir }}/{{ wildfly_instance_name }}/bin/set_maint {{ ansible_fqdn }} {{ wildfly_instance_name }}"
+    when: deploy_result.changed
+
+  - name: "Stop WILDFLY instance {{ wildfly_instance_name }}"
+    shell: "{{ wxx_dirs.app_dir }}/{{ wildfly_instance_name }}/bin/proc.sh stop"
+    args:
+      chdir: "{{ wxx_dirs.app_dir }}/{{ wildfly_instance_name }}/bin"
+      executable: /bin/bash
+  when: deploy_result.changed
+
+- name: "Deploy apps for {{ wildfly_instance_name }}"
+  copy:
+    src: "{{ app.src }}/{{ app.file }}"
+    dest: "{{ wildfly_jboss_base_dir }}/standalone/deployments/{{ app.file }}"
+    remote_src: "{{ app.remote_src }}"
+  register: deploy_result
+  notify: "restart wildfly instance"
+  with_items: "{{ wildfly_apps }}"
+  loop_control:
+    loop_var: app
+  no_log: False
+  when: app.ensure == 'present'
+
+- name: Manage wildfly_refresh_list for deployments
+  set_fact: wildfly_refresh_list={{ wildfly_refresh_list + [ wildfly_instance_name ] }}
+  when: elem.changed and  wildfly_instance_status == 'running'
+  with_items: "{{ deploy_result.results }}"
+  loop_control:
+    loop_var: elem
+  tags:
+    - deploy
+  no_log: True
+  
+## Undeploy app
+
+- name: Remove app file
+  file: 
+    dest: "{{ wildfly_jboss_base_dir }}/standalone/deployments/{{ app.file }}"
+    state: 'absent'
+  with_items: "{{ wildfly_apps }}"
+  register: undeploy_result
+  loop_control:
+    loop_var: app
+  when: app.ensure == 'absent'

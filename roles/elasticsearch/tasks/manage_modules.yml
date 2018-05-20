@@ -1,0 +1,60 @@
+---
+- block:
+  - name: Create module path
+    file: 
+      path: "{{ elasticsearch_jboss_base_dir }}/{{ elasticsearch_module_base_path }}/{{ module.path }}"
+      state: directory
+      mode: '0755'
+    with_items: "{{ elasticsearch_modules }}"
+    loop_control:
+      loop_var: module
+    no_log: True
+
+  - name: Install module
+    unarchive:
+      src: "{{ resources }}/{{ apptype }}/modules/{{ module.name }}/{{ module.version }}/{{ module.file }}"
+      dest: "{{ elasticsearch_jboss_base_dir }}/{{ elasticsearch_module_base_path }}/{{ module.path }}"
+      #creates: "{{ jboss_base_dir }}/{{ module_base_path }}/{{ module.path }}/main/module.xml"
+      remote_src: False
+    register: module_result
+    notify: "restart elasticsearch instance"
+    with_items: "{{ elasticsearch_modules }}"
+    loop_control:
+      loop_var: module
+    no_log: True
+  when: module.ensure == 'present'
+
+- name: Manage elasticsearch_refresh_list for jdbc driver files
+  set_fact: elasticsearch_refresh_list={{ elasticsearch_refresh_list + [ elasticsearch_instance_name ] }}
+  when: elem.changed
+  with_items: "{{ module_result.results }}"
+  loop_control:
+    loop_var: elem
+  tags:
+    - install
+    - config
+  no_log: True
+
+- name: Remove module
+  command: rm -rf "{{ module.path }}"
+  args:
+    chdir: "{{ elasticsearch_jboss_base_dir }}/{{ elasticsearch_module_base_path }}"
+    removes: "{{ module.path }}"
+  register: module_result
+  notify: "restart elasticsearch instance"
+  with_items: "{{ elasticsearch_modules }}"
+  loop_control:
+    loop_var: module
+  no_log: True
+  when: module.ensure == 'absent'
+
+- name: Manage elasticsearch_refresh_list for jdbc driver files
+  set_fact: elasticsearch_refresh_list={{ elasticsearch_refresh_list + [ elasticsearch_instance_name ] }}
+  when: elem.changed
+  with_items: "{{ module_result.results }}"
+  loop_control:
+    loop_var: elem
+  tags:
+    - install
+    - config
+  no_log: True

@@ -1,0 +1,29 @@
+---
+- name: restart-tomcat
+  shell: "{{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh stop;nohup {{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh start &"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ item }}/bin"
+    executable: /bin/bash
+  with_items: "{{ tomcat_refresh_list | unique }}"
+  listen: "restart tomcat instance"
+  no_log: False
+
+- name: start_tomcat_instance
+  shell: "nohup {{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh start &"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ item }}/bin"
+    executable: /bin/bash
+  with_items: "{{ tomcat_start_list | unique }}"
+  listen: "start tomcat instance"
+  no_log: False
+  when: item not in tomcat_refresh_list
+
+- name: stop_tomcat_instance
+  shell: "{{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh stop"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ item }}/bin"
+    executable: /bin/bash
+  with_items: "{{ tomcat_stop_list | unique }}"
+  listen: "stop tomcat instance"
+  no_log: False
+  when: item not in tomcat_refresh_list

@@ -1,0 +1,3 @@
+apptype: httpd-balancer
+httpd_balancer_port: 8080
+httpd_balancer_member_group: ''

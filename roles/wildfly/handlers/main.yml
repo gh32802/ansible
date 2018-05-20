@@ -1,0 +1,29 @@
+---
+- name: restart-wildfly
+  shell: "{{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh stop;nohup {{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh start &"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ item }}/bin"
+    executable: /bin/bash
+  with_items: "{{ wildfly_refresh_list | unique }}"
+  listen: "restart wildfly instance"
+  no_log: False
+
+- name: start_wildfly_instance
+  shell: "nohup {{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh start &"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ item }}/bin"
+    executable: /bin/bash
+  with_items: "{{ wildfly_start_list | unique }}"
+  listen: "start wildfly instance"
+  no_log: False
+  when: item not in wildfly_refresh_list
+
+- name: stop_wildfly_instance
+  shell: "{{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh stop"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ item }}/bin"
+    executable: /bin/bash
+  with_items: "{{ wildfly_stop_list | unique }}"
+  listen: "stop wildfly instance"
+  no_log: False
+  when: item not in wildfly_refresh_list

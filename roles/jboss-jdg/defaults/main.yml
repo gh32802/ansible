@@ -1,0 +1,36 @@
+apptype: jboss-jdg
+jdg_instances:
+  - name: 'jdg8180' 
+    enable: False
+    ensure: 'present'
+    status: 'running'
+    is_managed: True
+    managed_by: 'webstaff'
+    jdg_version: "{{ jdg_latest }}"
+    java_version: "{{ java_latest }}"
+    maint_stop_delay: '15m'
+    jboss_opts: []
+    java_opts:
+      - '-Xms1024m'
+      - '-Xmx1024m'
+      - '-Djava.net.preferIPv4Stack=true'
+      - '-Djboss.modules.system.pkgs=$JBOSS_MODULES_SYSTEM_PKGS'
+      - '-Djava.awt.headless=true'
+      - '-Djboss.modules.policy-permissions=true'
+      - '-Djboss.socket.binding.port-offset=$JBOSS_PORT_OFFSET'
+      - '-Djboss.node.name=$NODENAME'
+      - '-Djboss.bind.address=0.0.0.0'
+      - '-Djboss.bind.address.management=127.0.0.1'
+      - '-Xloggc:$JBOSS_HOME_DIR/standalone/log/gc.log.$(date +%Y%m%d%H%M%S) -XX:+PrintGCDetails -XX:+PrintGCDateStamps"'
+    configuration_xml:
+      name: 'standalone.xml'
+      deploy: False
+      src: ''
+    configuration_inserts: []
+    config_files: []
+    apps: []
+    module_base_path: 'modules/system/layers/base'
+    modules: []
+    appdynamics:
+      ensure: 'absent'
+      properties: {}

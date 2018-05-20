@@ -1,0 +1,58 @@
+---
+- block:
+  - name: Create plugin dir
+    file: 
+      path: "{{ elasticsearch_plugin_base_path }}/{{ plugin.name }}"
+      state: directory
+      mode: '0755'
+    with_items: "{{ elasticsearch_plugins }}"
+    loop_control:
+      loop_var: plugin
+      
+  - name: Install plugin
+    unarchive:
+      src: "{{ resources }}/{{ apptype }}/plugins/{{ plugin.name }}-{{ plugin.version }}.zip"
+      dest: "{{ elasticsearch_plugin_base_path }}/{{ plugin.name }}"
+      creates: "{{ elasticsearch_plugin_base_path }}/{{ plugin.name }}/plugin-descriptor.properties"
+      remote_src: False
+    register: plugin_install_result
+    notify: "restart elasticsearch instance"
+    with_items: "{{ elasticsearch_plugins }}"
+    loop_control:
+      loop_var: plugin
+    no_log: False
+  when: plugin.ensure == 'present'
+
+- name: Manage elasticsearch_refresh_list for plugins
+  set_fact: elasticsearch_refresh_list={{ elasticsearch_refresh_list + [ elasticsearch_instance_name ] }}
+  when: elem.changed
+  with_items: "{{ plugin_install_result.results }}"
+  loop_control:
+    loop_var: elem
+  tags:
+    - install
+    - config
+  no_log: True
+
+- name: Remove plugin
+  file: 
+    path: "{{ elasticsearch_plugin_base_path }}/{{ plugin.name }}"
+    state: 'absent'
+  register: plugin_remove_result
+  notify: "restart elasticsearch instance"
+  with_items: "{{ elasticsearch_plugins }}"
+  loop_control:
+    loop_var: plugin
+  no_log: True
+  when: plugin.ensure == 'absent'
+  
+- name: Manage elasticsearch_refresh_list for plugins
+  set_fact: elasticsearch_refresh_list={{ elasticsearch_refresh_list + [ elasticsearch_instance_name ] }}
+  when: elem.changed
+  with_items: "{{ plugin_remove_result.results }}"
+  loop_control:
+    loop_var: elem
+  tags:
+    - install
+    - config
+  no_log: True

@@ -1,0 +1,60 @@
+---
+- block:
+  - name: Create module path
+    file: 
+      path: "{{ wildfly_jboss_base_dir }}/{{ wildfly_module_base_path }}/{{ module.path }}"
+      state: directory
+      mode: '0755'
+    with_items: "{{ wildfly_modules }}"
+    loop_control:
+      loop_var: module
+    no_log: True
+
+  - name: Install module
+    unarchive:
+      src: "{{ resources }}/{{ apptype }}/modules/{{ module.name }}/{{ module.version }}/{{ module.file }}"
+      dest: "{{ wildfly_jboss_base_dir }}/{{ wildfly_module_base_path }}/{{ module.path }}"
+      creates: "{{ wildfly_jboss_base_dir }}/{{ wildfly_module_base_path }}/{{ module.path }}/main/module.xml"
+      remote_src: False
+    register: module_result
+    notify: "restart wildfly instance"
+    with_items: "{{ wildfly_modules }}"
+    loop_control:
+      loop_var: module
+    no_log: False
+  when: module.ensure == 'present'
+
+- name: Manage wildfly_refresh_list for jdbc driver files
+  set_fact: wildfly_refresh_list={{ wildfly_refresh_list + [ wildfly_instance_name ] }}
+  when: elem.changed
+  with_items: "{{ module_result.results }}"
+  loop_control:
+    loop_var: elem
+  tags:
+    - install
+    - config
+  no_log: True
+
+- name: Remove module
+  command: rm -rf "{{ module.path }}"
+  args:
+    chdir: "{{ wildfly_jboss_base_dir }}/{{ wildfly_module_base_path }}"
+    removes: "{{ module.path }}"
+  register: module_result
+  notify: "restart wildfly instance"
+  with_items: "{{ wildfly_modules }}"
+  loop_control:
+    loop_var: module
+  no_log: True
+  when: module.ensure == 'absent'
+
+- name: Manage wildfly_refresh_list for jdbc driver files
+  set_fact: wildfly_refresh_list={{ wildfly_refresh_list + [ wildfly_instance_name ] }}
+  when: elem.changed and wildfly_instance_status == 'running'
+  with_items: "{{ module_result.results }}"
+  loop_control:
+    loop_var: elem
+  tags:
+    - install
+    - config
+  no_log: True

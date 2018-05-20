@@ -1,0 +1,55 @@
+pipeline {
+    agent any
+    environment {
+      ANSIBLE_HOME = "/wxx/ansible"
+      ANSIBLE_CONFIGURATION = "${ANSIBLE_HOME}/ansible.cfg"
+      REPOSERVER = "repo.local.net"
+      ENVIRONMENT = "showcase-test"
+      NODEGROUP = "showcase-test-webapp"
+    }
+    stages {
+        stage('Network') {
+            steps {
+              echo 'NETWORK'
+            }
+        }
+        stage('OS') {
+            steps {
+              echo 'OS'
+            }
+        }
+        stage('DB') {
+            steps {
+                echo 'DB'
+            }
+        }
+        stage('WebApp') {
+            steps {
+                echo 'Check roles for updates'
+                script { 
+                  roles = [ 'web-base','httpd','java','tomcat', ]
+                  for (role in roles) {
+                    dir ("${ANSIBLE_HOME}/roles/${role}") {
+                      git url: "git@${REPOSERVER}:WEBSTAFF/ANSIBLE_ROLES/${role}.git"
+                    }
+                  }
+                }
+                echo 'Get nodes'
+                sh "/wxx/ansible/scripts/get_nodes.pl ${ENVIRONMENT} ${NODEGROUP}"
+                echo 'Checkout playbook'
+                dir ("${ANSIBLE_HOME}/playbooks/$ENVIRONMENT/${NODEGROUP}") {
+                  git url: "git@${REPOSERVER}:WEBSTAFF/ANSIBLE_PLAYS/$ENVIRONMENT/${NODEGROUP}.git"
+                }
+                echo 'Run playbook'
+                sh "ansible-playbook ${ANSIBLE_HOME}/playbooks/$ENVIRONMENT/${NODEGROUP}/site.yml --diff"
+            }
+        }
+    }
+    post {
+      always {
+        // Clean up workspace
+        echo "Cleanup workspace"
+        deleteDir()
+      }
+    }
+}

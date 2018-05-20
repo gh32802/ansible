@@ -1,0 +1,34 @@
+num_cpu=$(lscpu|grep -w '^CPU(s):'|awk '{ print $2 }')
+export JAVA_HOME={{ elasticsearch_java_home }}
+export ES_USER={{ elasticsearch_user }}
+export ES_GROUP={{ elasticsearch_group }}
+export ES_NETWORK_HOST={{ elasticsearch_network_host }}
+export ES_VERSION={{elasticsearch_version }}
+export ES_HTTP_PORT={{ elasticsearch_port }}
+export ES_HOME={{ elasticsearch_home_dir }}
+export ES_BASE={{ elasticsearch_base_dir }}
+export ES_HEAP_SIZE={{ elasticsearch_heapsize }}
+export ES_START_TIMEOUT={{ elasticsearch_starttimeout }}
+export ES_STOP_TIMEOUT={{ elasticsearch_stoptimeout }}
+export ES_NODE_NAME={{ ansible_hostname }}-{{ elasticsearch_instance_name }}
+export ES_JAVA_OPTS="\
+-Des.network.host=$ES_NETWORK_HOST \
+-Des.http.port=$ES_HTTP_PORT \
+-Des.path.conf=${ES_BASE}/config \
+-Des.path.logs=${ES_BASE}/logs \
+-Des.path.data=${ES_BASE}/data
+-Des.node.name=${ES_NODE_NAME} \
+-XX:ParallelGCThreads=$num_cpu \
+{% if appdynamics is defined %}
+{% if elasticsearch_appdynamics_ensure == 'present' %}
+{% if appdynamics_version|int > 3 %}
+-javaagent:/wxx/app/AppDynamics/AppServerAgent/ver{{ appdynamics_version }}/javaagent.jar \
+{% else %}
+-javaagent:/wxx/app/AppDynamics/AppServerAgent/javaagent.jar \
+{% endif %}
+{% for property in elasticsearch_appdynamics_system_properties %}
+{{ property }} \
+{% endfor %}
+{% endif %}
+{% endif %}
+"

@@ -1,0 +1,27 @@
+export SERVERNAME="{{ ansible_hostname }}-{{ tomcat_instance_name }}"
+export JAVA_HOME="{{ tomcat_java_home }}"
+export CATALINA_HOME="{{ tomcat_catalina_home }}"
+export CATALINA_BASE="{{ tomcat_catalina_base }}"
+{% if tomcat_ld_library_path is defined %}
+{% if tomcat_ld_library_path|length > 0 %}
+export LD_LIBRARY_PATH="{{ tomcat_ld_library_path|join(':') }}"
+{% endif %}
+{% endif %}
+CATALINA_OPTS=""
+{% for parmval in tomcat_catalina_opts %}
+export CATALINA_OPTS="$CATALINA_OPTS {{ parmval }}"
+{% endfor %}
+{% if appdynamics is defined %}
+{% if tomcat_appdynamics_ensure == 'present' %}
+{% if appdynamics_version|int > 3 %}
+export CATALINA_OPTS="$CATALINA_OPTS -javaagent:/wxx/app/AppDynamics/AppServerAgent/ver{{ appdynamics_version }}/javaagent.jar"
+{% else %}
+export CATALINA_OPTS="$CATALINA_OPTS -javaagent:/wxx/app/AppDynamics/AppServerAgent/javaagent.jar"
+{% endif %}
+{% for property in tomcat_appdynamics_system_properties %}
+export CATALINA_OPTS="$CATALINA_OPTS {{ property }}"
+{% endfor %}
+{% endif %}
+{% endif %}
+unset JRE_HOME
+export PATH="${JAVA_HOME}/bin:/${CATALINA_BASE}/bin:$PATH"

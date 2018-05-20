@@ -1,0 +1,57 @@
+---
+## Deploy main configuration file
+
+- name: "Copy {{ jdg_configuration_xml_name }} for {{ jdg_instance_name }}"
+  copy:
+    src: "{{ jdg_configuration_xml_src }}/{{ jdg_configuration_xml_name }}"
+    dest: "{{ wxx_dirs.app_dir }}/{{ jdg_instance_name }}/standalone/configuration/{{ jdg_configuration_xml_name }}.tpl"
+    remote_src: "{{ jdg_configuration_xml_remote_src }}"
+  no_log: False
+  changed_when: False
+  register: check_configuration_xml
+
+- name: "Prepare {{ jdg_configuration_xml_name }} with inserts for {{ jdg_instance_name }}"
+  blockinfile:
+    dest: "{{ wxx_dirs.app_dir }}/{{ jdg_instance_name }}/standalone/configuration/{{ jdg_configuration_xml_name }}.tpl"
+    marker: "<!-- {mark} ANSIBLE MANAGED BLOCK {{ insert.name }} -->"
+    block: "{{ lookup('file', \"files/{{ jdg_instance_name }}/{{ insert.file }}\") }}"
+    insertafter: "<!--{{ insert.name }}_DESCRIPTION-->"
+  register: configuration_xml_result
+  with_items: "{{ jdg_configuration_inserts }}"
+  loop_control:
+    loop_var: insert
+  no_log: False
+  changed_when: False
+  when: jdg_configuration_inserts != []
+
+- name: "Deploy {{ jdg_configuration_xml_name }} {{ jdg_instance_name }} check mode"
+  copy:
+    src: "{{ wxx_dirs.app_dir }}/{{ jdg_instance_name }}/standalone/configuration/{{ jdg_configuration_xml_name }}.tpl"
+    dest: "{{ jdg_jboss_base_dir }}/standalone/configuration/{{ jdg_configuration_xml_name }}"
+    remote_src: True
+  register: check_deploy_result
+  no_log: False
+  check_mode: yes
+
+- name: "Stop JDG instance {{ jdg_instance_name }}"
+  shell: "{{ wxx_dirs.app_dir }}/{{ jdg_instance_name }}/bin/proc.sh stop"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ jdg_instance_name }}/bin"
+    executable: /bin/bash
+  when: check_deploy_result.changed
+
+- name: "Deploy {{ jdg_configuration_xml_name }} {{ jdg_instance_name }}"
+  copy:
+    src: "{{ wxx_dirs.app_dir }}/{{ jdg_instance_name }}/standalone/configuration/{{ jdg_configuration_xml_name }}.tpl"
+    dest: "{{ jdg_jboss_base_dir }}/standalone/configuration/{{ jdg_configuration_xml_name }}"
+    remote_src: True
+  register: deploy_result
+  notify: "restart jdg instance"
+  no_log: False
+
+- name: "Set jdg_refresh_list for {{ jdg_configuration_xml_name }}"
+  set_fact: jdg_refresh_list={{ jdg_refresh_list + [ jdg_instance_name ] }}
+  when: deploy_result.changed
+  tags:
+    - deploy
+  no_log: True

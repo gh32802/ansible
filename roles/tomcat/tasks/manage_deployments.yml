@@ -1,0 +1,133 @@
+---
+## Deploy app 
+ 
+- name: "Deploy apps check mode for {{ tomcat_instance_name }}"
+  copy:
+    src: "{{ app.src }}/{{ app.file }}"
+    dest: "{{ tomcat_catalina_base }}/webapps/{{ app.file }}"
+    remote_src: "{{ app.remote_src }}"
+  register: deploy_result
+  with_items: "{{ tomcat_apps }}"
+  loop_control:
+    loop_var: app
+  no_log: False
+  when: app.ensure == 'present'
+  check_mode: yes
+
+- name: "Stop Tomcat instance {{ tomcat_instance_name }}"
+  shell: "{{ wxx_dirs.app_dir }}/{{ tomcat_instance_name }}/bin/proc.sh stop"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ tomcat_instance_name }}/bin"
+    executable: /bin/bash
+  when: deploy_result.changed
+
+- name: "Deploy apps for {{ tomcat_instance_name }}"
+  copy:
+    src: "{{ app.src }}/{{ app.file }}"
+    dest: "{{ tomcat_catalina_base }}/webapps/{{ app.file }}"
+    remote_src: "{{ app.remote_src }}"
+  register: deploy_result
+  notify: "restart-tomcat"
+  with_items: "{{ tomcat_apps }}"
+  loop_control:
+    loop_var: app
+  no_log: False
+  when: app.ensure == 'present'
+
+- block:
+
+  - name: "Clean up app directory for {{ tomcat_instance_name }}"
+    file: 
+      dest: "{{ wxx_dirs.app_dir }}/{{ tomcat_instance_name }}/webapps/{{ elem.app.path }}"
+      state: 'absent'
+    with_items: "{{ deploy_result.results }}"
+    loop_control:
+      loop_var: elem
+    when: elem.changed
+    no_log: True
+
+  - name: "Clean up work area for {{ tomcat_instance_name }}"
+    file: 
+      dest: "{{ tomcat_catalina_base }}/work/Catalina/localhost/{{ elem.app.path }}"
+      state: 'absent'
+    with_items: "{{ deploy_result.results }}"
+    loop_control:
+      loop_var: elem
+    when: elem.changed
+    no_log: True
+
+  when: deploy_result.changed
+
+- name: "Manage tomcat_refresh_list for deployments for {{ tomcat_instance_name }}"
+  set_fact: tomcat_refresh_list={{ tomcat_refresh_list + [ tomcat_instance_name ] }}
+  when: elem.changed and tomcat_instance_status == 'running'
+  with_items: "{{ deploy_result.results }}"
+  loop_control:
+    loop_var: elem
+  tags:
+    - deploy
+  no_log: True
+
+## Undeploy app
+
+- name: "Clean up app file check mode for {{ tomcat_instance_name }}"
+  file: 
+    dest: "{{ tomcat_catalina_base }}/webapps/{{ app.file }}"
+    state: 'absent'
+  with_items: "{{ tomcat_apps }}"
+  register: undeploy_result
+  loop_control:
+    loop_var: app
+  when: app.ensure == 'absent'
+  check_mode: yes
+  no_log: True
+
+- block:
+
+  - name: "Stop Tomcat instance for {{ tomcat_instance_name }}"
+    shell: "{{ wxx_dirs.app_dir }}/{{ tomcat_instance_name }}/bin/proc.sh stop"
+    args:
+      chdir: "{{ wxx_dirs.app_dir }}/{{ tomcat_instance_name }}/bin"
+      executable: /bin/bash
+  when: undeploy_result.changed
+
+- name: "Clean up app file for {{ tomcat_instance_name }}"
+  file: 
+    dest: "{{ tomcat_catalina_base }}/webapps/{{ app.file }}"
+    state: 'absent'
+  with_items: "{{ tomcat_apps }}"
+  register: undeploy_result
+  notify: "restart tomcat instance"
+  loop_control:
+    loop_var: app
+  when: app.ensure == 'absent'
+
+- block:
+  - name: "Clean up app directory for {{ tomcat_instance_name }}"
+    file: 
+      dest: "{{ tomcat_catalina_base }}/webapps/{{ app.path }}"
+      state: 'absent'
+    with_items: "{{ tomcat_apps }}"
+    loop_control:
+      loop_var: app
+
+  - name: "Clean up work area for {{ tomcat_instance_name }}"
+    file: 
+      dest: "{{ tomcat_catalina_base }}/work/Catalina/localhost/{{ app.path }}"
+      state: 'absent'
+    with_items: "{{ tomcat_apps }}"
+    loop_control:
+      loop_var: app
+
+  when: app.ensure == 'absent'
+
+- name: Manage tomcat_refresh_list for deployments
+  set_fact: tomcat_refresh_list={{ tomcat_refresh_list + [ tomcat_instance_name ] }}
+  when: elem.changed and tomcat_instance_status == 'running'
+  with_items: "{{ undeploy_result.results }}"
+  loop_control:
+    loop_var: elem
+  no_log: True
+  tags:
+    - undeploy
+

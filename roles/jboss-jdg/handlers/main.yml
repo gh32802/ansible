@@ -1,0 +1,30 @@
+---
+- name: restart-jdg
+  shell: "{{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh stop;nohup {{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh start &"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ item }}/bin"
+    executable: /bin/bash
+  with_items: "{{ jdg_refresh_list | unique }}"
+  listen: "restart jdg instance"
+  no_log: False
+
+- name: start_jdg_instance
+  shell: "nohup {{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh start &"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ item }}/bin"
+    executable: /bin/bash
+  with_items: "{{ jdg_start_list | unique }}"
+  listen: "start jdg instance"
+  no_log: False
+  when: item not in jdg_refresh_list
+
+- name: stop_jdg_instance
+  shell: "{{ wxx_dirs.app_dir }}/{{ item }}/bin/proc.sh stop"
+  args:
+    chdir: "{{ wxx_dirs.app_dir }}/{{ item }}/bin"
+    executable: /bin/bash
+  with_items: "{{ jdg_stop_list | unique }}"
+  listen: "stop jdg instance"
+  no_log: False
+  when: item not in jdg_refresh_list
+

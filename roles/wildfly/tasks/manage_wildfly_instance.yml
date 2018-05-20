@@ -1,0 +1,214 @@
+### INSTALL JBOSS-WILDFLY instance(s)
+
+- block:
+
+  - name: Install JDK
+    include_role:
+      name: java
+    vars:
+      java_version: "{{ wildfly_java_version }}"
+      java_set_link: False
+      java_ensure: 'present'
+    when: wildfly_java_version is defined
+    tags:
+      - install
+      - config
+
+  - name: "Check if JBOSS_HOME_DIR already exists for {{ wildfly_instance_name }}"
+    stat:
+      path: "{{ wildfly_jboss_home_dir }}/bin"
+    register: jboss_home_dir_bin
+
+  - name: "Download and extract WILDFLY for {{ wildfly_instance_name }}"
+    unarchive:
+      src: "{{ resources }}/{{ apptype }}/{{ wildfly_archive_name }}"
+      dest: "{{ wxx_dirs.app_dir }}"
+      remote_src: False
+    when: jboss_home_dir_bin.stat.isdir is not defined
+    tags:
+      - install
+      - config
+
+  - name: "Move WILDFLY dir name to JBOSS_HOME_DIR {{ wildfly_instance_name }}"
+    shell:
+      mv "wildfly-{{ wildfly_version }}.Final" "wildfly-{{ wildfly_version }}-{{ wildfly_http_port }}"
+    args:
+      chdir: "{{ wxx_dirs.app_dir }}"
+      creates: "{{ wildfly_jboss_home_dir }}/bin"
+    no_log: True
+
+  - name: "Check if JBOSS_HOME_DIR has been created for {{ wildfly_instance_name }}"
+    stat:
+      path: "{{ wildfly_jboss_home_dir }}/bin"
+    register: jboss_home_dir_bin
+
+  - name: "Set symlink {{ wildfly_instance_name }}"
+    file:
+      src: "{{ wildfly_jboss_home_dir | basename }}"
+      dest: "{{ wildfly_jboss_base_dir }}"
+      state: link
+    no_log: True
+    when: jboss_home_dir_bin.stat.isdir is defined
+
+  - name: "Set cli port {{ wildfly_instance_name }}"
+    replace:
+      dest: "{{ wildfly_jboss_base_dir }}/bin/jboss-cli.xml"
+      regexp: '(^\s+)<port>\d+<\/port>'
+      replace: "\\1<port>{{ wildfly_cli_port }}</port>"
+    no_log: False
+
+  - block:
+    - set_fact: 
+        wildfly_appdynamics_system_properties: []
+
+    - name: "Manage AppDynamics configuration for {{ wildfly_instance_name }}"
+      set_fact: 
+        wildfly_appdynamics_system_properties={{ wildfly_appdynamics_system_properties + [ '-Dappdynamics.agent.' + property.key + '=' + property.value ] }}
+      with_dict: "{{ wildfly_appdynamics_properties }}"
+      loop_control:
+        loop_var: 'property'
+      no_log: True
+    when: wildfly_appdynamics is defined
+
+  - name: "Manage standalone.conf {{ wildfly_instance_name }}"
+    template: 
+      src: standalone.conf.j2 
+      dest: "{{ wildfly_jboss_base_dir }}/bin/standalone.conf" 
+      mode: 0640
+    register: standalone_conf_result
+    notify: "restart wildfly instance"
+    tags:
+      - install
+      - config
+    no_log: False
+ 
+  - name: "Set wildfly_refresh_list for standalone.conf {{ wildfly_instance_name }}"
+    set_fact: wildfly_refresh_list={{ wildfly_refresh_list + [ wildfly_instance_name ] }}
+    when: standalone_conf_result.changed and wildfly_instance_status == 'running'
+    tags:
+      - install
+      - config
+    no_log: True
+
+  - name: "Manage config files {{ wildfly_instance_name }}"
+    copy:
+      src="{{ wildfly_instance_name }}/{{ file.name }}"
+      dest="{{ wildfly_jboss_base_dir }}/standalone/configuration/{{ file.name }}" mode={{ file.mode }}
+    register: file_result
+    notify: "restart wildfly instance"
+    with_items: "{{ wildfly_config_files }}"
+    loop_control:
+      loop_var: file
+    tags:
+      - install
+      - config
+    no_log: True
+
+  - name: "Manage wildfly_refresh_list for config files {{ wildfly_instance_name }}"
+    set_fact: wildfly_refresh_list={{ wildfly_refresh_list + [ wildfly_instance_name ] }}
+    when: elem.changed
+    with_items: "{{ file_result.results }}"
+    loop_control:
+      loop_var: elem
+    tags:
+      - install
+      - config
+    no_log: True
+
+  - name: "Deploy alive.html {{ wildfly_instance_name }}"
+    copy: 
+      src: "{{ resources }}/apps/alive.html" 
+      dest: "{{ wildfly_jboss_base_dir }}/welcome-content/alive.html" 
+      mode: 0644
+ 
+  - name: "Install proc script {{ wildfly_instance_name }}"
+    template: 
+      src: proc.sh.j2 
+      dest: "{{ wxx_dirs.app_dir }}/{{ wildfly_instance_name }}/bin/proc.sh"
+      mode: 0750
+    tags:
+      - install
+      - config
+ 
+  - include_tasks: manage_svc.yml
+
+  - include_tasks: manage_configuration.yml
+    when: wildfly_standalone_xml_deploy == True
+
+  - include_tasks: manage_modules.yml
+    when: wildfly_modules != []
+
+  - include_tasks: manage_deployments.yml
+    when: wildfly_artifacts != []
+
+  - name: "Get wildfly status {{ wildfly_instance_name }}"
+    shell: 
+      "ps -ef|grep {{ ansible_hostname }}-{{ wildfly_instance_name }}|grep -v grep|awk '{ print $2 }'"
+    register: pid
+    changed_when: pid.rc != 0
+    no_log: True
+    check_mode: no
+
+  - name: "Set wildfly_start_list {{ wildfly_instance_name }}"
+    set_fact: wildfly_start_list={{ wildfly_start_list + [ wildfly_instance_name ] }}
+    when: wildfly_instance_status == 'running' and pid.stdout == ""
+    notify: "start wildfly instance"
+    changed_when: pid.stdout == ""
+    tags:
+      - start
+    no_log: True
+
+  - name: "Set wildfly_stop_list {{ wildfly_instance_name }}"
+    set_fact: wildfly_stop_list={{ wildfly_stop_list + [ wildfly_instance_name ] }}
+    when: wildfly_instance_status == 'stopped' and pid.stdout != ""
+    notify: "stop wildfly instance"
+    changed_when: pid.stdout != ""
+    tags:
+      - stop
+    no_log: True
+
+  - name: "Manage wildfly facts for {{ wildfly_instance_name }}"
+    template:
+      src: 'templates/wildfly.csv.j2'
+      dest: "{{ wxx_dirs.fact_dir }}/wildfly.csv"
+      mode: '0644'
+
+  when: wildfly_instance_ensure == 'present'
+
+### UNINSTALL JBOSS-WILDFLY instance(s)
+- block:
+
+  - include_tasks: manage_svc.yml
+
+  - name: "Get WILDFLY pid {{ wildfly_instance_name }}"
+    shell: 
+      "ps -ef|grep {{ ansible_hostname }}-{{ wildfly_instance_name }}|grep -v grep|awk '{ print $2 }'"
+    register: get_pid
+    changed_when: get_pid.stdout != ""
+    no_log: True
+    check_mode: no
+ 
+  - name : "Stop WILDFLY if running {{ wildfly_instance_name }}"
+    command: kill -9 {{ get_pid.stdout }}
+    when: get_pid.stdout != ""
+    no_log: True
+ 
+  - name: "Remove instance directory {{ wildfly_instance_name }}"
+    file: 
+      path: "{{ wildfly_jboss_home_dir }}" 
+      state: absent 
+    register: remove_wildfly_result
+
+  - name: "Remove instance link for {{ wildfly_instance_name }}"
+    shell: find "{{ wxx_dirs.app_dir }}" -lname  "{{ wildfly_jboss_home_dir|basename }}" | xargs rm -f
+    args:
+      chdir: "{{ wxx_dirs.app_dir }}"
+    when: remove_wildfly_result.changed
+
+  - name: "Manage wildfly facts for {{ wildfly_instance_name }}"
+    template:
+      src: 'templates/wildfly.csv.j2'
+      dest: "{{ wxx_dirs.fact_dir }}/wildfly.csv"
+      mode: '0644'
+
+  when: wildfly_instance_ensure == 'absent'

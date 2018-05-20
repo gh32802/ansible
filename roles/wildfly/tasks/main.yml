@@ -1,0 +1,16 @@
+---
+- name: Initialize wildfly_refresh_list'
+  set_fact:
+    wildfly_refresh_list: []
+
+- name: Initialize wildfly_start_list
+  set_fact:
+    wildfly_start_list: []
+
+- name: Initialize wildfly_stop_list
+  set_fact:
+    wildfly_stop_list: []
+
+- include_tasks: manage_wildfly_instance.yml
+  with_items: "{{ wildfly_instances }}"
+  when: item.is_managed == true

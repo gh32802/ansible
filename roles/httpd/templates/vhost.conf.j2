@@ -1,0 +1,43 @@
+{% if vhost.listen_port != 80 %}
+Listen {{ vhost.listen_port }}
+{% endif %}
+<VirtualHost {{ vhost.listen_ip|default(ansible_default_ipv4.address) }}:{{ vhost.listen_port }}>
+  ServerName {{ vhost.servername }}
+{% if vhost.serveraliases is defined %}
+  {% for alias in vhost.serveraliases %}
+  ServerAlias {{ alias }}
+  {% endfor %}
+{% endif %}
+{% if vhost.documentroot is defined %}
+  DocumentRoot "{{ vhost.documentroot }}"
+{% else %}
+  DocumentRoot "{{ wxx_dirs.data_dir }}/httpd/{{ vhost.servername }}/htdocs"
+{% endif %}
+
+{% if vhost.serveradmin is defined %}
+  ServerAdmin {{ vhost.serveradmin }}
+{% endif %}
+{% if vhost.documentroot is defined %}
+  <Directory "{{ vhost.documentroot }}">
+    AllowOverride {{ vhost.allow_override | default(None) }}
+    Options {{ vhost.options | default(httpd_options) }}
+{% else %}
+  <Directory "{{ httpd.rootdir }}/{{ vhost.servername }}/htdocs">
+    AllowOverride {{ vhost.allow_override | default(None) }}
+    Options {{ vhost.options | default(httpd_options) }}
+{% endif %}
+{% if httpd_minor_version == "2" %}
+    Order allow,deny
+    Allow from all
+{% else %}
+    Require all granted
+{% endif %}
+  </Directory>
+
+  ErrorLog "{{ wxx_dirs.log_dir }}/httpd/{{ vhost.servername }}/{{ vhost.servername }}_error.log"
+  CustomLog "{{ wxx_dirs.log_dir }}/httpd/{{ vhost.servername }}/{{ vhost.servername }}_access_log" combined
+
+{% if vhost.extra_parameters is defined %}
+  {{ vhost.extra_parameters | indent }}
+{% endif %}
+</VirtualHost>

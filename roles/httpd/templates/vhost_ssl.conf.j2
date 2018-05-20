@@ -1,0 +1,105 @@
+{% if vhost_ssl.listen_port != 443 %}
+Listen {{ vhost_ssl.listen_port }}
+{% endif %}
+{% if httpd_version[:+3] == "2.2" %}
+SSLPassPhraseDialog  builtin
+SSLSessionCache         shmcb:/var/cache/mod_ssl/scache(512000)
+SSLMutex default
+{% else %}
+SSLPassPhraseDialog exec:/usr/libexec/httpd-ssl-pass-dialog
+SSLSessionCache         shmcb:/run/httpd/sslcache(512000)
+{% endif %}
+SLSessionCacheTimeout  300
+SSLRandomSeed startup file:/dev/urandom  256
+SSLRandomSeed connect builtin
+SSLCryptoDevice builtin
+ 
+### Virtual Host
+ 
+<VirtualHost {{ vhost_ssl.listen_ip|default(ansible_default_ipv4.address) }}:443>
+ 
+   # General setup for the virtual host, inherited from global configuration
+ 
+   ServerName {{ vhost_ssl.servername }}
+{% if vhost_ssl.serveraliases is defined %}
+{% for alias in vhost_ssl.serveraliases %}
+   ServerAlias {{ alias }}
+{% endfor %}
+{% endif %}
+{% if vhost_ssl.documentroot is defined %}
+   DocumentRoot "{{ vhost_ssl.documentroot }}"
+{% else %}
+   DocumentRoot "{{ wxx_dirs.data_dir }}/httpd/{{ vhost_ssl.servername }}/htdocs"
+{% endif %}
+ 
+{% if vhost_ssl.serveradmin is defined %}
+   ServerAdmin {{ vhost_ssl.serveradmin }}
+{% endif %}
+{% if vhost_ssl.documentroot is defined %}
+   <Directory "{{ vhost_ssl.documentroot }}">
+     AllowOverride {{ vhost_ssl.allow_override | default(None) }}
+     Options {{ vhost_ssl.options | default(httpd_options) }}
+{% else %}
+   <Directory "{{ httpd.rootdir }}/{{ vhost_ssl.servername }}/htdocs">
+     AllowOverride {{ vhost_ssl.allow_override | default(None) }}
+     Options {{ vhost_ssl.options | default(httpd_options) }}
+{% endif %}
+{% if httpd_minor_version == "2" %}
+     Order allow,deny
+     Allow from all
+{% else %}
+       Require all granted
+{% endif %}
+   </Directory>
+
+   # Use separate log files for the SSL virtual host; note that LogLevel
+   # is not inherited from httpd.conf.
+   ## Error Log
+   ErrorLog {{ wxx_dirs.log_dir }}/httpd/{{ vhost_ssl.servername }}/{{ vhost_ssl.servername }}-ssl_error_log
+ 
+   ## Access-Log
+   CustomLog {{ wxx_dirs.log_dir }}/httpd/{{ vhost_ssl.servername }}/{{ vhost_ssl.servername }}-ssl_access_log \
+   "%{X-Forwarded-For}i %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\""
+ 
+   ### SSL Cipher Log
+   CustomLog {{ wxx_dirs.log_dir }}/httpd/{{ vhost_ssl.servername }}/{{ vhost_ssl.servername }}-ssl_request_log \
+   "%t %{X-Forwarded-For}i %{SSL_PROTOCOL}x %{SSL_CIPHER}x \"%r\" %b"
+ 
+   SSLEngine on
+ 
+   ## SSL Protokoll und Ciphers
+   SSLProtocol {{ vhost_ssl.ssl_protocol|default('-SSLv2 -SSLv3 -TLSv1 +TLSv1.1 +TLSv1.2') }}
+   {% if httpd_version[:+3] == '2.4' %}
+   SSLCompression Off
+   {% endif %}
+   SSLHonorCipherOrder on
+   SSLCipherSuite {{ vhost_ssl.ssl_ciphersuite|default('\'EECDH+AESGCM EDH+AESGCM EECDH EDH !aNULL !eNULL !EXPORT !LOW !MEDIUM !DES !3DES !RC4 !SEED !CAMELLIA !MD5 !PSK !DSS\'') }}
+ 
+   ## Pfad zu den Key-Files
+   SSLCertificateFile {{ wxx_dirs.sec_dir }}/{{ vhost_ssl.servername }}/{{ vhost_ssl.certificate_file }}
+   SSLCertificateKeyFile {{ wxx_dirs.sec_dir }}/{{ vhost_ssl.servername }}/{{ vhost_ssl.certificate_key_file }}
+   ## Angabe der CA -> muss PEM encoded vorliegen
+   SSLCertificateChainFile {{ wxx_dirs.sec_dir }}/{{ vhost_ssl.certificate_chain_file }}
+ 
+   # DISABLE TRACE TRACK
+   RewriteEngine On
+   RewriteCond %{REQUEST_METHOD} ^(TRACE|TRACK)
+   RewriteRule .* - [F]
+ 
+   <Files ~ "\.(cgi|shtml|phtml|php3?)$">
+      SSLOptions +StdEnvVars
+   </Files>
+ 
+   <Directory "/var/www/cgi-bin">
+      SSLOptions +StdEnvVars
+   </Directory>
+ 
+   BrowserMatch "MSIE [2-5]" \
+   nokeepalive ssl-unclean-shutdown \
+   downgrade-1.0 force-response-1.0
+
+{% if vhost_ssl.extra_parameters is defined %}
+  {{ vhost_ssl.extra_parameters | indent }}
+{% endif %}
+ 
+</VirtualHost>

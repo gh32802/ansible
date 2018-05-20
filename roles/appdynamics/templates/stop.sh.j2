@@ -1,0 +1,12 @@
+#!/bin/bash
+
+appdynamics_machineagent_basedir={{ appdynamics_machineagent_basedir }}
+PID=$(ps -ef|grep "${appdynamics_machineagent_basedir}/machineagent.jar"|grep -v grep|awk '{ print $2 }')
+
+if [ ! -z $PID ]
+then
+  echo "Stopping MachineAgent ..."
+  kill $PID
+else
+  echo "MachineAgent is not running!"
+fi

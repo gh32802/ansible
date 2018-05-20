@@ -1,0 +1,30 @@
+apptype: httpd
+httpd:
+  ensure: 'present'
+  enable: False
+  state: 'running'
+  managed_by: 'webstaff'
+  serverroot: '/wxx/httpd'
+  documentroot: '/wxx/data/httpd/htdocs'
+  rootdir: '/wxx/data/httpd'
+  servertokens: 'ProductOnly'
+  serversignature: 'Off'
+  use_default_vhost: False
+  user: 'apache'
+  group: 'apache'
+  options: "-Indexes +FollowSymLinks"
+  ports:
+    - 80
+  conf_web: []
+  modules:
+    - name: 'mod_ssl'
+      ensure: 'present'
+  mod_jk:
+    ensure: 'absent'
+  vhosts:
+  - servername: "{{ ansible_fqdn }}"
+    ensure: 'present'
+    serveraliases:
+      - "{{ ansible_hostname }}"
+    listen_port: 80
+  certs: []

@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# {{ wildfly_instance_name }}:       Start up {{ wildfly_instance_name }}
+#
+# chkconfig: 345 99 28
+# description: This service starts up {{ wildfly_instance_name }}
+#
+# processname: {{ wildfly_instance_name }}
+
+### BEGIN INIT INFO
+# Provides: {{ wildfly_instance_name }}
+# Required-Start: $local_fs $network
+# Required-Stop: $local_fs
+# Default-Start: 3 4 5
+# Default-Stop: 0 1 6
+# Short-Description: Start up {{ wildfly_instance_name }}
+# Description: This service starts up {{ wildfly_instance_name }}.
+### END INIT INFO
+
+ACTION=$1
+RUNUSER={{ wildfly_user }}
+USAGE="$(basename $0) <start|stop|restart|status>"
+
+case $ACTION in
+
+        start)
+                su - $RUNUSER -c "{{ wxx_dirs.app_dir }}/{{ wildfly_instance_name }}/bin/proc.sh start"
+                ;;
+        stop)
+                su - $RUNUSER -c "{{ wxx_dirs.app_dir }}/{{ wildfly_instance_name }}/bin/proc.sh stop"
+                ;;
+        restart)
+                su - $RUNUSER -c "{{ wxx_dirs.app_dir }}/{{ wildfly_instance_name }}/bin/proc.sh restart"
+                ;;
+        status)
+                su - $RUNUSER -c "{{ wxx_dirs.app_dir }}/{{ wildfly_instance_name }}/bin/proc.sh status"
+                ;;
+        *)      echo $USAGE
+                ;;
+esac

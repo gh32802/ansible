@@ -1,0 +1,8 @@
+{% if jdg_instances is defined %}
+node,appserver_type,appserver_name,appserver_version,java_version,managed_by
+{% for item in jdg_instances %}
+{% if item.ensure == 'present' %}
+{{ ansible_fqdn }},jboss-jdg,{{ item.name }},{{ jdg_version }},{{ jdg_java_version }},{{ item.managed_by }}
+{% endif %}
+{% endfor %}
+{% endif %}

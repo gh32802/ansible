@@ -1,0 +1,11 @@
+apptype: java
+java_instances:
+  - version: "{{ java_latest }}"
+    link: 'latest'
+    ensure: 'present'
+    set_link: True
+    jce_policy: 'unlimited'
+java_version: "{{ java_instances[0].version }}"
+java_postfix: "{{ (java_version|int < 9)|ternary(java_arch + '.tar.gz',java_arch + '_bin.tar.gz' ) }}"
+java_archive_name: "{{ (java_version[0]|int < 9)|ternary( 'jdk-' + java_version + '-linux-' + java_postfix, 'jdk-' + java_version + '_linux-' + java_postfix ) }}"
+java_home: "{{ (java_version[0]|int < 9)|ternary( wxx_dirs.java_dir + '/jdk1.' + java_version|regex_replace('^(\\d+)u(\\d+)$', '\\1.0_\\2'), wxx_dirs.java_dir + '/jdk-' + java_version ) }}"

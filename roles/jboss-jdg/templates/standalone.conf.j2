@@ -1,0 +1,82 @@
+## -*- shell-script -*- ######################################################
+##                                                                          ##
+##  JBoss Bootstrap Script Configuration                                    ##
+##                                                                          ##
+##############################################################################
+
+#
+# This file is optional; it may be removed if not needed.
+#
+
+#
+# Specify the maximum file descriptor limit, use "max" or "maximum" to use
+# the default, as queried by the system.
+#
+# Defaults to "maximum"
+#
+#MAX_FD="maximum"
+
+#
+# Specify the profiler configuration file to load.
+#
+# Default is to not load profiler configuration file.
+#
+#PROFILER=""
+
+#
+# Specify the location of the Java home directory.  If set then $JAVA will
+# be defined to $JAVA_HOME/bin/java, else $JAVA will be "java".
+#
+
+{% if jdg_ld_library_path is defined %}
+{% if jdg_ld_library_path|length > 0 %}
+export LD_LIBRARY_PATH="{{ jdg_ld_library_path|join(':') }}"
+{% endif %}
+{% endif %}
+
+JAVA_HOME={{ jdg_java_home }}
+NODENAME="{{ ansible_hostname }}-{{ jdg_instance_name }}"
+JBOSS_HOME_DIR={{ jdg_jboss_home_dir }}
+JBOSS_PORT_OFFSET={{ jdg_port_offset }}
+#
+# Specify the exact Java VM executable to use.
+#
+#JAVA=""
+
+if [ "x$JBOSS_MODULES_SYSTEM_PKGS" = "x" ]; then
+   JBOSS_MODULES_SYSTEM_PKGS="org.jboss.byteman"
+fi
+
+# Uncomment the following line to prevent manipulation of JVM options
+# by shell scripts.
+#
+#PRESERVE_JAVA_OPTS=true
+
+JAVA_OPTS=""
+{% for opt in jdg_java_opts %}
+JAVA_OPTS="$JAVA_OPTS {{ opt }}"
+{% endfor %}
+{% if appdynamics is defined %}
+{% if jdg_appdynamics_ensure == 'present' %}
+{% if appdynamics_version|int > 3 %}
+JAVA_OPTS="$JAVA_OPTS -Djboss.modules.system.pkgs=com.singularity -javaagent:{{ wxx_dirs.app_dir }}/AppDynamics/AppServerAgent/ver{{ appdynamics_version }}/javaagent.jar"
+{% else %}
+JAVA_OPTS="$JAVA_OPTS -Djboss.modules.system.pkgs=com.singularity -javaagent:{{ wxx_dirs.app_dir }}/AppDynamics/AppServerAgent/javaagent.jar"
+{% endif %}
+{% for property in jdg_appdynamics_system_properties %}
+JAVA_OPTS="$JAVA_OPTS {{ property }}"
+{% endfor %}
+{% endif %}
+{% endif %}
+
+# Sample JPDA settings for remote socket debugging
+#JAVA_OPTS="$JAVA_OPTS -agentlib:jdwp=transport=dt_socket,address=8787,server=y,suspend=n"
+
+# Sample JPDA settings for shared memory debugging
+#JAVA_OPTS="$JAVA_OPTS -agentlib:jdwp=transport=dt_shmem,server=y,suspend=n,address=jboss"
+
+# Uncomment to not use JBoss Modules lockless mode
+#JAVA_OPTS="$JAVA_OPTS -Djboss.modules.lockless=false"
+
+# Uncomment to gather JBoss Modules metrics
+#JAVA_OPTS="$JAVA_OPTS -Djboss.modules.metrics=true"
